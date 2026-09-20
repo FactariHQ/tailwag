@@ -69,7 +69,7 @@ function handleWagCommand_(cmd) {
   });
 
   var announcement = buildAwardMessage_(result, req);
-  var toSourceChannel = cfgBool('ANNOUNCE_IN_SOURCE_CHANNEL');
+  var toSourceChannel = cfgBool_('ANNOUNCE_IN_SOURCE_CHANNEL');
 
   // When announcements are centralized the public post is just another Slack
   // call, so it rides in the same parallel batch as the DMs and the receipt.
@@ -78,7 +78,7 @@ function handleWagCommand_(cmd) {
   // timing out.
   var extra = [];
   if (!toSourceChannel) {
-    var announceChannel = resolveChannel_(cfgStr('ANNOUNCE_CHANNEL'));
+    var announceChannel = resolveChannel_(cfgStr_('ANNOUNCE_CHANNEL'));
     if (announceChannel) {
       extra.push({
         method: 'chat.postMessage',
@@ -112,7 +112,7 @@ function handleWagCommand_(cmd) {
 function dispatchSideMessages_(result, req, extraCalls) {
   var calls = (extraCalls || []).slice();
 
-  if (cfgBool('DM_RECIPIENT')) {
+  if (cfgBool_('DM_RECIPIENT')) {
     result.awarded.forEach(function (a) {
       var dm = buildRecipientDm_(a, req, req.channelId, '');
       calls.push({
@@ -122,9 +122,9 @@ function dispatchSideMessages_(result, req, extraCalls) {
     });
   }
 
-  if (cfgBool('MIRROR_TO_ANNOUNCE_CHANNEL') && cfgBool('ANNOUNCE_IN_SOURCE_CHANNEL')) {
+  if (cfgBool_('MIRROR_TO_ANNOUNCE_CHANNEL') && cfgBool_('ANNOUNCE_IN_SOURCE_CHANNEL')) {
     var mirror = buildAwardMessage_(result, req);
-    var ch = resolveChannel_(cfgStr('ANNOUNCE_CHANNEL'));
+    var ch = resolveChannel_(cfgStr_('ANNOUNCE_CHANNEL'));
     if (ch) {
       calls.push({
         method: 'chat.postMessage',
@@ -137,7 +137,7 @@ function dispatchSideMessages_(result, req, extraCalls) {
   var worthSaying = result.skipped.length > 0 ||
     result.remaining <= 1 ||
     result.awarded.some(function (a) { return a.dots < a.requested; });
-  if (worthSaying && cfgBool('ANNOUNCE_IN_SOURCE_CHANNEL') && req.channelId) {
+  if (worthSaying && cfgBool_('ANNOUNCE_IN_SOURCE_CHANNEL') && req.channelId) {
     var receipt = buildGiverReceipt_(result, req);
     calls.push({
       method: 'chat.postEphemeral',
@@ -145,7 +145,7 @@ function dispatchSideMessages_(result, req, extraCalls) {
     });
   }
 
-  if (cfgBool('DM_GIVER_RECEIPT')) {
+  if (cfgBool_('DM_GIVER_RECEIPT')) {
     var r2 = buildGiverReceipt_(result, req);
     calls.push({
       method: 'chat.postMessage',
@@ -226,7 +226,12 @@ function handleWagsCommand_(cmd) {
     return ephemeral_('Recent tailwags', buildFeedBlocks_(10));
   }
 
+  if (/^(rewards?|tickets?|prizes?|pods?|redeem|shop|store)$/.test(lower)) {
+    return handleRewardsCommand_(cmd);
+  }
+
   if (/^(raffle|entries|drawing)$/.test(lower)) {
+    if (!cfgBool_('RAFFLE_ENABLED') && cfgBool_('REWARDS_ENABLED')) return handleRewardsCommand_(cmd);
     return ephemeral_('Raffle', buildRaffleStatusBlocks_(cmd.user_id));
   }
 
@@ -263,7 +268,7 @@ function buildFeedBlocks_(limit) {
   var rows = recentReasons_(limit || 10);
   if (!rows.length) return [sectionBlock_('_No tailwags yet._')];
   var values = {};
-  valueList().forEach(function (v) { values[v.tag] = v; });
+  valueList_().forEach(function (v) { values[v.tag] = v; });
   return [headerBlock_('🐕 Recent tailwags')].concat(rows.map(function (r) {
     var v = values[r.value_tag];
     return contextBlock_(
@@ -275,7 +280,7 @@ function buildFeedBlocks_(limit) {
 
 /** Raffle standing for the current month. */
 function buildRaffleStatusBlocks_(userId) {
-  if (!cfgBool('RAFFLE_ENABLED')) return [sectionBlock_('_The raffle is switched off right now._')];
+  if (!cfgBool_('RAFFLE_ENABLED')) return [sectionBlock_('_The raffle is switched off right now._')];
   var period = monthKey_();
   var rows = raffleEntriesFor_(period);
   var total = 0;
@@ -287,11 +292,11 @@ function buildRaffleStatusBlocks_(userId) {
     headerBlock_('🎟️ ' + fmt_(now_(), 'MMMM') + ' raffle'),
     sectionBlock_('You have *' + mine + '* ' + (mine === 1 ? 'entry' : 'entries') +
       ' out of *' + total + '* in the drum — about *' + Math.round(odds * 100) + '%* of the tickets.' +
-      (cfgStr('RAFFLE_PRIZE') ? '\nPrize: *' + escapeSlack_(cfgStr('RAFFLE_PRIZE')) + '*' : ''))
+      (cfgStr_('RAFFLE_PRIZE') ? '\nPrize: *' + escapeSlack_(cfgStr_('RAFFLE_PRIZE')) + '*' : ''))
   ];
   blocks.push(contextBlock_('Every tailwag you receive is one entry. Drawn on the 1st, then the drum resets.' +
-    (cfgNum('RAFFLE_MAX_ENTRIES_PER_PERSON') > 0
-      ? ' Capped at ' + cfgNum('RAFFLE_MAX_ENTRIES_PER_PERSON') + ' entries each.' : '')));
+    (cfgNum_('RAFFLE_MAX_ENTRIES_PER_PERSON') > 0
+      ? ' Capped at ' + cfgNum_('RAFFLE_MAX_ENTRIES_PER_PERSON') + ' entries each.' : '')));
   return blocks;
 }
 
@@ -358,7 +363,7 @@ function handleAdminCommand_(cmd) {
       if (/TOKEN|SECRET/.test(key)) {
         return ephemeral_('Secrets are not settable from Slack — put `' + escapeSlack_(key) + '` straight into the Config tab.');
       }
-      setConfig(key, val);
+      setConfig_(key, val);
       logInfo_('admin.set', cmd.user_id, { key: key, value: val });
       return ephemeral_('`' + escapeSlack_(key) + '` is now `' + escapeSlack_(val) + '`.');
     }
@@ -386,16 +391,16 @@ function handleAdminCommand_(cmd) {
 
     case 'digest': {
       var d = postDigest_(true);
-      return ephemeral_(d.ok ? 'Digest posted to ' + cfgStr('ANNOUNCE_CHANNEL') + '.' : 'Digest failed: ' + d.error);
+      return ephemeral_(d.ok ? 'Digest posted to ' + cfgStr_('ANNOUNCE_CHANNEL') + '.' : 'Digest failed: ' + d.error);
     }
 
     case 'pause':
-      setConfig('PAUSED', true);
+      setConfig_('PAUSED', true);
       logWarn_('admin.pause', cmd.user_id, '');
       return ephemeral_('Paused. Giving is refused; balances and boards still work.');
 
     case 'resume':
-      setConfig('PAUSED', false);
+      setConfig_('PAUSED', false);
       logInfo_('admin.resume', cmd.user_id, '');
       return ephemeral_('Back on.');
 
@@ -425,7 +430,7 @@ function handleAdminCommand_(cmd) {
         '`/wag-admin set KEY value` — change a setting\n' +
         '`/wag-admin keys` — list settable keys\n' +
         '`/wag-admin reset confirm` — refill everyone now\n' +
-        '`/wag-admin draw [2026-08]` — run a raffle drawing\n' +
+        '`/wag-admin draw [2026-08]` — run a legacy raffle drawing (reward pods are run from the rewards site)\n' +
         '`/wag-admin digest` — post the digest now\n' +
         '`/wag-admin pause` / `resume`\n' +
         '`/wag-admin sync` — pull the roster from Slack\n' +
@@ -503,12 +508,12 @@ function buildAdminStatusBlocks_() {
       ['Gave this ' + word, stats.participationThisPeriod + ' of ' + stats.people]
     ]),
     contextBlock_([
-      'Allowance: ' + cfgNum('ALLOWANCE_PEER') + '/' + word + ' peer, ' +
-        cfgNum('ALLOWANCE_MANAGER') + '/' + word + ' manager',
-      'Per-recipient cap: ' + (cfgNum('MAX_PER_RECIPIENT_PER_PERIOD') || 'none'),
-      'Raffle: ' + (cfgBool('RAFFLE_ENABLED') ? 'on' : 'off'),
-      'Values: ' + (cfgBool('VALUES_ENABLED') ? (cfgBool('VALUE_REQUIRED') ? 'required' : 'optional') : 'off'),
-      cfgBool('PAUSED') ? ':warning: *PAUSED*' : 'Running'
+      'Allowance: ' + cfgNum_('ALLOWANCE_PEER') + '/' + word + ' peer, ' +
+        cfgNum_('ALLOWANCE_MANAGER') + '/' + word + ' manager',
+      'Per-recipient cap: ' + (cfgNum_('MAX_PER_RECIPIENT_PER_PERIOD') || 'none'),
+      'Raffle: ' + (cfgBool_('RAFFLE_ENABLED') ? 'on' : 'off'),
+      'Values: ' + (cfgBool_('VALUES_ENABLED') ? (cfgBool_('VALUE_REQUIRED') ? 'required' : 'optional') : 'off'),
+      cfgBool_('PAUSED') ? ':warning: *PAUSED*' : 'Running'
     ].join('  ·  ')),
     contextBlock_('Period key `' + stats.periodKey + '`  ·  month `' + stats.monthKey + '`')
   ];
