@@ -38,16 +38,19 @@ function buildHomeView_(userId) {
   ]));
 
   var ctx = [];
-  if (cfgBool('STREAKS_ENABLED') && num_(bal.streak) > 1) {
+  if (cfgBool_('STREAKS_ENABLED') && num_(bal.streak) > 1) {
     ctx.push(':fire: ' + num_(bal.streak) + '-' + word + ' giving streak');
   }
-  if (cfgBool('RAFFLE_ENABLED')) {
+  if (cfgBool_('RAFFLE_ENABLED')) {
     var entries = myRaffleEntries_(userId, monthKey_());
     ctx.push('🎟️ ' + entries + ' ' + (entries === 1 ? 'entry' : 'entries') + ' in the ' +
       fmt_(now_(), 'MMMM') + ' drawing');
   }
   if (bal.pool === 'manager') ctx.push('Manager pool');
   if (ctx.length) blocks.push(contextBlock_(ctx.join('  ·  ')));
+
+  // --- Rewards -------------------------------------------------------------
+  homeRewardsBlocks_(userId).forEach(function (b) { blocks.push(b); });
 
   // --- Badges --------------------------------------------------------------
   var badges = badgesFor_(bal);
@@ -92,7 +95,7 @@ function buildHomeView_(userId) {
     blocks.push(dividerBlock_());
     blocks.push(sectionBlock_('*Lately around here*'));
     var values = {};
-    valueList().forEach(function (v) { values[v.tag] = v; });
+    valueList_().forEach(function (v) { values[v.tag] = v; });
     feed.forEach(function (r) {
       var v = values[r.value_tag];
       blocks.push(contextBlock_(
@@ -104,12 +107,12 @@ function buildHomeView_(userId) {
 
   // --- How to give ---------------------------------------------------------
   blocks.push(dividerBlock_());
-  var trigger = ':' + cfgStr('EMOJI_TRIGGER') + ':';
+  var trigger = ':' + cfgStr_('EMOJI_TRIGGER') + ':';
   var howLines = ['*Giving one*', '`/wag @someone what they did`'];
-  if (cfgBool('ALLOW_EMOJI_GIVING')) {
+  if (cfgBool_('ALLOW_EMOJI_GIVING')) {
     howLines.push('or type `@someone ' + trigger + ' why` in any channel');
   }
-  if (cfgBool('ALLOW_REACTION_GIVING')) {
+  if (cfgBool_('ALLOW_REACTION_GIVING')) {
     howLines.push('or react with ' + trigger + ' on something good');
   }
   blocks.push(sectionBlock_(howLines.join('\n')));
