@@ -20,7 +20,7 @@ var __sheetCache = {};
 /** The backing spreadsheet. Bound container if there is one, otherwise by id. */
 function ss_() {
   if (__ssCache) return __ssCache;
-  var id = PropertiesService.getScriptProperties().getProperty(PROP_SPREADSHEET_ID);
+  var id = PropertiesService.getScriptProperties().getProperty(PROP_SPREADSHEET_ID) || builtInSpreadsheetId_();
   if (id) {
     __ssCache = SpreadsheetApp.openById(id);
   } else {
@@ -33,6 +33,15 @@ function ss_() {
     PropertiesService.getScriptProperties().setProperty(PROP_SPREADSHEET_ID, active.getId());
   }
   return __ssCache;
+}
+
+/**
+ * The spreadsheet id compiled into the rewards portal build (scripts/build-portal.js
+ * writes PORTAL_SPREADSHEET_ID), so the second project finds the shared sheet
+ * without anyone typing script properties.
+ */
+function builtInSpreadsheetId_() {
+  return typeof PORTAL_SPREADSHEET_ID !== 'undefined' && PORTAL_SPREADSHEET_ID ? String(PORTAL_SPREADSHEET_ID) : '';
 }
 
 /** A tab by name, creating it with headers if it is missing. */
@@ -152,14 +161,14 @@ function getRoster_() {
 
 /** True when the user draws from the manager pool. */
 function isManager_(userId) {
-  if (cfgList('MANAGER_USER_IDS').indexOf(userId) !== -1) return true;
+  if (cfgList_('MANAGER_USER_IDS').indexOf(userId) !== -1) return true;
   var r = getRoster_()[userId];
   return !!(r && String(r.pool || '').trim().toLowerCase() === 'manager');
 }
 
 /** True when the user may run /wag-admin. */
 function isAdmin_(userId) {
-  return cfgList('ADMIN_USER_IDS').indexOf(userId) !== -1;
+  return cfgList_('ADMIN_USER_IDS').indexOf(userId) !== -1;
 }
 
 /** Which allowance pool a user draws from. */
@@ -170,8 +179,8 @@ function poolOf_(userId) {
 /** Weekly allowance for a user, by pool. */
 function allowanceFor_(userId) {
   return isManager_(userId)
-    ? cfgNum('ALLOWANCE_MANAGER')
-    : cfgNum('ALLOWANCE_PEER');
+    ? cfgNum_('ALLOWANCE_MANAGER')
+    : cfgNum_('ALLOWANCE_PEER');
 }
 
 /** Adds or updates a roster row. Safe to call on every interaction. */
@@ -214,7 +223,7 @@ function upsertRoster_(userId, profile) {
 
 /** True when the roster gate is closed to this user. */
 function rosterBlocks_(userId) {
-  if (!cfgBool('REQUIRE_ROSTER')) return false;
+  if (!cfgBool_('REQUIRE_ROSTER')) return false;
   var r = getRoster_()[userId];
   if (!r) return true;
   var active = r.active;
@@ -329,7 +338,7 @@ function rollForward_(bal) {
 
   if (normPeriodKey_(bal.period_key) !== wk) {
     var allowance = allowanceFor_(bal.user_id);
-    var carry = cfgBool('CARRY_OVER_UNUSED') ? Math.max(0, num_(bal.remaining)) : 0;
+    var carry = cfgBool_('CARRY_OVER_UNUSED') ? Math.max(0, num_(bal.remaining)) : 0;
     bal.period_key = wk;
     bal.allowance = allowance + carry;
     bal.spent_this_period = 0;
@@ -527,7 +536,7 @@ function awardBadges_(bal) {
   var fresh = [];
 
   [['receiver', num_(bal.received_total)], ['giver', num_(bal.given_total)]].forEach(function (pair) {
-    var ladder = badgeLadder(pair[0]);
+    var ladder = badgeLadder_(pair[0]);
     var total = pair[1];
     ladder.forEach(function (b) {
       if (total >= b.threshold && !have[b.key]) {
@@ -555,7 +564,7 @@ function awardBadges_(bal) {
 /** Badge definitions a user currently holds. */
 function badgesFor_(bal) {
   var keys = parseJson_(bal.badges_json, []);
-  var all = badgeLadder('receiver').concat(badgeLadder('giver'));
+  var all = badgeLadder_('receiver').concat(badgeLadder_('giver'));
   var byKey = {};
   all.forEach(function (b) { byKey[b.key] = b; });
   return keys.map(function (k) { return byKey[k]; }).filter(Boolean);
@@ -564,7 +573,7 @@ function badgesFor_(bal) {
 /** The next receiver badge a user is working toward, or null. */
 function nextBadge_(bal) {
   var total = num_(bal.received_total);
-  var ladder = badgeLadder('receiver');
+  var ladder = badgeLadder_('receiver');
   for (var i = 0; i < ladder.length; i++) {
     if (total < ladder[i].threshold) {
       return { badge: ladder[i], need: ladder[i].threshold - total };
@@ -604,9 +613,9 @@ function raffleIndexDirty_(period) {
 
 /** Adds raffle entries for a receiver, respecting the per-person monthly cap. */
 function addRaffleEntries_(userId, name, dots, period) {
-  if (!cfgBool('RAFFLE_ENABLED')) return 0;
+  if (!cfgBool_('RAFFLE_ENABLED')) return 0;
   period = period || monthKey_();
-  var cap = cfgNum('RAFFLE_MAX_ENTRIES_PER_PERSON');
+  var cap = cfgNum_('RAFFLE_MAX_ENTRIES_PER_PERSON');
   var existing = raffleIndex_(period)[userId];
   var cols = COLUMNS.RAFFLE;
 
