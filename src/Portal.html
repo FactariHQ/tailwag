@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tail Wag Rewards</title>
+<style>
+  :root {
+    --bg: #fbf6ef;
+    --surface: #ffffff;
+    --surface-2: #fff4e6;
+    --ink: #2a1c10;
+    --ink-2: #6b5646;
+    --ink-3: #9a8574;
+    --line: #eadccb;
+    --brand: #ff8a1f;
+    --brand-ink: #b35600;
+    --brand-soft: #ffe7cf;
+    --good: #1f8a4c;
+    --good-soft: #dff3e6;
+    --warn: #a15c00;
+    --warn-soft: #fff0d6;
+    --bad: #b3261e;
+    --bad-soft: #fde4e1;
+    --shadow: 0 1px 2px rgba(60, 35, 10, .06), 0 4px 16px rgba(60, 35, 10, .06);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17120d;
+      --surface: #211a13;
+      --surface-2: #2a2118;
+      --ink: #f6ece2;
+      --ink-2: #c9b7a6;
+      --ink-3: #8f7c6b;
+      --line: #3a2e22;
+      --brand: #ff9a3c;
+      --brand-ink: #ffb46b;
+      --brand-soft: #3d2915;
+      --good: #5fcf8e;
+      --good-soft: #173323;
+      --warn: #ffc466;
+      --warn-soft: #3a2a10;
+      --bad: #ff8a80;
+      --bad-soft: #3d1a17;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--brand-ink); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 16px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Header */
+  .top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .top img { width: 44px; height: 44px; border-radius: 50%; background: var(--brand); padding: 3px; }
+  .top h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  .top .sub { color: var(--ink-2); font-size: 13px; }
+  .top .who { margin-left: auto; text-align: right; font-size: 13px; color: var(--ink-2); }
+  .top .who b { color: var(--ink); display: block; font-size: 14px; }
+
+  /* Wallet */
+  .wallet { display: grid; grid-template-columns: 1.3fr 2fr; gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .hero { padding: 18px 20px; background: linear-gradient(135deg, var(--brand) 0%, #ffb15c 100%); color: #2a1300; border: none; position: relative; overflow: hidden; }
+  .hero .label { font-size: 13px; font-weight: 600; opacity: .8; text-transform: uppercase; letter-spacing: .06em; }
+  .hero .big { font-size: 56px; font-weight: 800; line-height: 1; margin: 6px 0 8px; letter-spacing: -.02em; }
+  .hero .big small { font-size: 18px; font-weight: 700; margin-left: 6px; letter-spacing: 0; }
+  .hero .meta { font-size: 13px; font-weight: 500; }
+  .hero .ticket-art { position: absolute; right: -14px; bottom: -18px; font-size: 110px; opacity: .18; transform: rotate(-14deg); pointer-events: none; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); padding: 6px; }
+  .stat { padding: 10px 12px; }
+  .stat .k { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  .stat .v { font-size: 24px; font-weight: 750; margin-top: 2px; }
+  .stat .h { font-size: 12px; color: var(--ink-3); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { background: none; border: none; padding: 10px 14px; cursor: pointer; color: var(--ink-2); font-weight: 600; border-bottom: 3px solid transparent; white-space: nowrap; }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brand); }
+  .tab .count { background: var(--brand-soft); color: var(--brand-ink); border-radius: 999px; padding: 0 7px; font-size: 12px; margin-left: 4px; }
+  .panel[hidden] { display: none; }
+
+  /* Pods */
+  .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 20px 0 10px; }
+  .section-title:first-child { margin-top: 0; }
+  .pods { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .pod { display: flex; flex-direction: column; overflow: hidden; }
+  .pod .art { height: 128px; background: var(--surface-2); display: grid; place-items: center; font-size: 64px; position: relative; }
+  .pod .art img { width: 100%; height: 100%; object-fit: cover; }
+  .pod .phase { position: absolute; top: 10px; left: 10px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .pod .phase.open { background: var(--good-soft); color: var(--good); }
+  .pod .phase.soon { background: var(--warn-soft); color: var(--warn); }
+  .pod .phase.closed { background: var(--brand-soft); color: var(--brand-ink); }
+  .pod .body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .pod h3 { margin: 0; font-size: 17px; line-height: 1.25; }
+  .pod .prize { color: var(--brand-ink); font-weight: 650; font-size: 14px; }
+  .pod .desc { color: var(--ink-2); font-size: 14px; white-space: pre-wrap; }
+  .pod .facts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--ink-2); }
+  .pod .facts b { color: var(--ink); }
+  .alloc { margin-top: auto; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .alloc-row { display: flex; align-items: center; gap: 8px; }
+  .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .stepper button { width: 38px; height: 38px; border: none; background: var(--surface-2); cursor: pointer; font-size: 18px; font-weight: 700; color: var(--ink); }
+  .stepper button:disabled { opacity: .35; cursor: default; }
+  .stepper input { width: 56px; height: 38px; border: none; text-align: center; font-weight: 750; font-size: 16px; background: transparent; -moz-appearance: textfield; }
+  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 10px; cursor: pointer; font-weight: 650; }
+  .btn:hover { border-color: var(--brand); }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #2a1300; }
+  .btn.primary:hover { filter: brightness(1.05); }
+  .btn.danger { color: var(--bad); }
+  .btn.small { padding: 5px 10px; font-size: 13px; border-radius: 8px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .linkbtn { background: none; border: none; color: var(--brand-ink); cursor: pointer; padding: 0; font-weight: 600; font-size: 13px; }
+  .odds { font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+  .odds b { color: var(--ink); }
+  .meter { height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+  .meter span { display: block; height: 100%; background: var(--brand); border-radius: 999px; transition: width .25s; }
+  .winners-inline { font-size: 14px; }
+  .winners-inline .w { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+
+  /* Lists */
+  .list { display: flex; flex-direction: column; }
+  .item { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .item:last-child { border-bottom: none; }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--brand-soft); color: var(--brand-ink); display: grid; place-items: center; font-weight: 750; font-size: 13px; flex: none; }
+  .item .main { flex: 1; min-width: 0; }
+  .item .line1 { font-size: 14px; }
+  .item .reason { margin-top: 3px; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+  .item .when { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: var(--surface-2); border-radius: 999px; padding: 2px 9px; color: var(--ink-2); margin-top: 6px; }
+  .delta { font-weight: 750; white-space: nowrap; }
+  .delta.plus { color: var(--good); }
+  .delta.minus { color: var(--bad); }
+  .muted { color: var(--ink-3); }
+  .empty { padding: 28px 16px; text-align: center; color: var(--ink-2); }
+  .empty .e { font-size: 34px; }
+
+  /* Kudos */
+  .kgrid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 14px; align-items: start; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 16px; }
+  .badge { display: inline-flex; gap: 6px; align-items: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 650; }
+  .badge img { width: 18px; height: 18px; }
+  .progress { padding: 0 16px 16px; font-size: 13px; color: var(--ink-2); }
+  .seg { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button { border: none; background: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: 650; color: var(--ink-2); font-size: 13px; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .card-head h2 { font-size: 15px; margin: 0; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); font-weight: 700; background: var(--surface-2); position: sticky; top: 0; }
+  td.r, th.r { text-align: right; }
+  tr:last-child td { border-bottom: none; }
+
+  /* Admin */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .tile { padding: 12px 14px; }
+  .form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 16px; }
+  .form .full { grid-column: 1 / -1; }
+  .field label { display: block; font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .field input, .field textarea, .field select { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .field textarea { min-height: 76px; resize: vertical; }
+  .field .hint { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+  .grantgrid { grid-template-columns: 120px 1fr auto; align-items: end; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .status-pill { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+  .status-pill.open { background: var(--good-soft); color: var(--good); }
+  .status-pill.soon, .status-pill.draft { background: var(--warn-soft); color: var(--warn); }
+  .status-pill.closed { background: var(--brand-soft); color: var(--brand-ink); }
+  .status-pill.cancelled { background: var(--bad-soft); color: var(--bad); }
+  details summary { cursor: pointer; font-size: 13px; color: var(--brand-ink); font-weight: 600; }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+
+  /* Toast + loading */
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(160%); opacity: 0; visibility: hidden; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-weight: 600; box-shadow: var(--shadow); transition: transform .25s, opacity .25s, visibility .25s; max-width: calc(100% - 32px); z-index: 10; }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
+  .toast.err { background: var(--bad); color: #fff; }
+  .loading { padding: 80px 16px; text-align: center; color: var(--ink-2); }
+  .loading img { width: 64px; height: 64px; animation: wag 0.9s ease-in-out infinite; }
+  @keyframes wag { 0%, 100% { transform: rotate(-10deg); } 50% { transform: rotate(10deg); } }
+  .error-box { padding: 20px; text-align: center; }
+  .jx { width: 1.15em; height: 1.15em; vertical-align: -0.2em; }
+
+  @media (max-width: 760px) {
+    .wallet, .kgrid { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(3, 1fr); }
+    .stat .v { font-size: 20px; }
+    .hero .big { font-size: 46px; }
+    .form, .grantgrid { grid-template-columns: 1fr; }
+    .top .who { display: none; }
+    .pods { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <img id="logo" alt="">
+    <div>
+      <h1>Tail Wag Rewards</h1>
+      <div class="sub">Earn tickets. Pick your prizes. Better odds the more you put in.</div>
+    </div>
+    <div class="who" id="who"></div>
+  </header>
+  <main id="app"><div class="loading"><img id="loadlogo" alt=""><div>Fetching your tickets…</div></div></main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
+</script>
+<script>
+(function () {
+  'use strict';
+
+  var S = null;          // portal state from the server
+  var A = null;          // admin state
+  var tab = 'rewards';
+  var kudosView = 'received';
+  var drafts = {};       // pod_id → target tickets the person is dialling in
+  var busy = false;
+  var editing = null;    // pod being edited in admin
+
+  var JX = BOOT.jackson ? '<img class="jx" src="' + BOOT.jackson + '" alt="">' : '🐕';
+  document.getElementById('logo').src = BOOT.jackson || '';
+  document.getElementById('loadlogo').src = BOOT.jackson || '';
+
+  // ---------- helpers ----------
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function n(v) { var x = Number(v); return isFinite(x) ? x : 0; }
+  function fmtN(v) { var x = Math.round(n(v) * 100) / 100; return x.toLocaleString(); }
+  function plural(v, one, many) { return fmtN(v) + ' ' + (n(v) === 1 ? one : many); }
+  function tickets(v) { return plural(v, 'ticket', 'tickets'); }
+  function cap(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+  function unit(v) { return plural(v, BOOT.unitSingular, BOOT.unitPlural); }
+  function initials(name) {
+    var p = String(name || '?').replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/);
+    return ((p[0] || '?')[0] + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase();
+  }
+  function when(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    var diff = (Date.now() - d.getTime()) / 1000;
+    if (diff >= 0 && diff < 60) return 'just now';
+    if (diff >= 0 && diff < 3600) return Math.round(diff / 60) + 'm ago';
+    if (diff >= 0 && diff < 86400) return Math.round(diff / 3600) + 'h ago';
+    if (diff >= 0 && diff < 86400 * 6) return d.toLocaleDateString(undefined, { weekday: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  }
+  function fullDate(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+  function countdown(iso) {
+    var ms = new Date(iso).getTime() - Date.now();
+    if (ms <= 0) return 'drawing now';
+    var m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+    if (d >= 2) return d + ' days left';
+    if (h >= 1) return h + 'h ' + (m % 60) + 'm left';
+    return Math.max(1, m) + ' min left';
+  }
+  function emoji(e) { return e ? esc(e) : JX; }
+  function toast(msg, isErr) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isErr ? ' err' : '');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.className = 'toast' + (isErr ? ' err' : ''); }, isErr ? 6000 : 3200);
+  }
+  function call(fn) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function (e) {
+        reject(new Error(String((e && e.message) || e).replace(/^(Exception|Error):\s*/i, '')));
+      });
+      r[fn].apply(r, args);
+    });
+  }
+
+  /**
+   * Chance of being drawn. Exact for one winner; for several winners (drawn
+   * weighted, without replacement) a quick simulation is close enough.
+   */
+  function winChance(mine, others, k) {
+    mine = n(mine);
+    if (mine <= 0) return 0;
+    var total = mine;
+    others.forEach(function (o) { total += n(o); });
+    k = Math.max(1, k || 1);
+    if (k >= others.length + 1) return 1;
+    if (k === 1) return mine / total;
+    var trials = 4000, hits = 0;
+    for (var t = 0; t < trials; t++) {
+      var pool = others.slice(), left = total, got = false;
+      var meIn = true;
+      for (var pick = 0; pick < k; pick++) {
+        var r = Math.random() * left, acc = 0, chosen = -1;
+        if (meIn) { acc += mine; if (r < acc) { got = true; break; } }
+        for (var i = 0; i < pool.length; i++) { acc += n(pool[i]); if (r < acc) { chosen = i; break; } }
+        if (chosen === -1) chosen = pool.length - 1;
+        left -= n(pool[chosen]); pool.splice(chosen, 1);
+      }
+      if (got) hits++;
+    }
+    return hits / trials;
+  }
+  function pct(p) {
+    if (p <= 0) return '0%';
+    if (p >= 0.995) return '100%';
+    if (p < 0.01) return '<1%';
+    return Math.round(p * 100) + '%';
+  }
+
+  // ---------- render ----------
+  function render() {
+    var app = document.getElementById('app');
+    if (!S) return;
+    document.getElementById('who').innerHTML = '<b>' + esc(S.me.name) + '</b>' + esc(S.me.email);
+
+    var w = S.wallet;
+    var openCount = S.pods.filter(function (p) { return p.phase === 'open'; }).length;
+    var html = '';
+    html += '<section class="wallet">';
+    html += '<div class="card hero"><div class="ticket-art">🎟️</div><div class="label">Tickets ready to enter</div>' +
+      '<div class="big num">' + fmtN(w.spendable) + '<small>🎟️</small></div>' +
+      '<div class="meta">' + (w.inPlay ? tickets(w.inPlay) + ' in open draws · ' : '') +
+      (w.spent ? tickets(w.spent) + ' spent' : 'Put them in a reward below') +
+      (w.available - w.spendable > 0.001 ? ' · +' + fmtN(w.available - w.spendable) + ' toward your next' : '') + '</div></div>';
+    html += '<div class="card stats">' +
+      stat(cap(BOOT.unitPlural) + ' received', S.kudos.receivedTotal, fmtN(S.kudos.receivedMonth) + ' this month') +
+      stat('Given', S.kudos.givenTotal, fmtN(S.kudos.remaining) + ' of ' + fmtN(S.kudos.allowance) + ' left this ' + S.kudos.periodWord) +
+      stat('Tickets earned', n(w.earned) + n(w.granted), (w.granted ? fmtN(w.granted) + ' bonus · ' : '') + 'since ' + (S.rules.launch ? new Date(S.rules.launch).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'launch')) +
+      '</div>';
+    html += '</section>';
+
+    if (!S.me.userId && tab !== 'admin') tab = 'admin';
+    var tabs = [['rewards', 'Rewards', openCount], ['kudos', 'My ' + BOOT.unitPlural], ['winners', 'Winners'], ['history', 'Ticket history']];
+    if (S.me.isAdmin) tabs.push(['admin', 'Admin']);
+    html += '<nav class="tabs" role="tablist">' + tabs.map(function (t) {
+      return '<button class="tab" role="tab" data-tab="' + t[0] + '" aria-selected="' + (tab === t[0]) + '">' + esc(t[1]) +
+        (t[2] ? '<span class="count">' + t[2] + '</span>' : '') + '</button>';
+    }).join('') + '</nav>';
+
+    html += '<section class="panel" ' + (tab === 'rewards' ? '' : 'hidden') + '>' + renderRewards() + '</section>';
+    html += '<section class="panel" ' + (tab === 'kudos' ? '' : 'hidden') + '>' + renderKudos() + '</section>';
+    html += '<section class="panel" ' + (tab === 'winners' ? '' : 'hidden') + '>' + renderWinners(S.winners, false) + '</section>';
+    html += '<section class="panel" ' + (tab === 'history' ? '' : 'hidden') + '>' + renderHistory() + '</section>';
+    if (S.me.isAdmin) html += '<section class="panel" ' + (tab === 'admin' ? '' : 'hidden') + '>' + renderAdmin() + '</section>';
+    app.innerHTML = html;
+  }
+
+  function stat(k, v, h) {
+    return '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v num">' + fmtN(v) + '</div><div class="h">' + esc(h) + '</div></div>';
+  }
+
+  function renderRewards() {
+    if (!S.rules.enabled) return '<div class="card empty"><div class="e">😴</div>Rewards are switched off right now.</div>';
+    var open = S.pods.filter(function (p) { return p.phase === 'open'; });
+    var closed = S.pods.filter(function (p) { return p.phase === 'closed'; });
+    var soon = S.pods.filter(function (p) { return p.phase === 'soon'; });
+    var done = S.pods.filter(function (p) { return p.phase === 'drawn' || p.phase === 'cancelled'; })
+      .sort(function (a, b) { return new Date(b.drawn_ts || 0) - new Date(a.drawn_ts || 0); });
+    var html = '';
+    html += '<div class="section-title">Open now</div>';
+    html += open.length ? '<div class="pods">' + open.map(podCard).join('') + '</div>'
+      : '<div class="card empty"><div class="e">🎁</div>Nothing is open to enter right now. Keep earning — your tickets wait for you.</div>';
+    if (closed.length) html += '<div class="section-title">Drawing now</div><div class="pods">' + closed.map(podCard).join('') + '</div>';
+    if (soon.length) html += '<div class="section-title">Coming up</div><div class="pods">' + soon.map(podCard).join('') + '</div>';
+    if (done.length) html += '<div class="section-title">Recently drawn</div><div class="pods">' + done.map(podCard).join('') + '</div>';
+    html += '<p class="muted" style="font-size:13px;margin-top:18px">Every ' + esc(BOOT.unitSingular) + ' you receive earns ' + tickets(S.rules.perReceived) +
+      (S.rules.perGiven > 0 ? ', and every one you give earns ' + tickets(S.rules.perGiven) : '') +
+      '. Tickets you put into a reward are spent when it draws, win or lose — you can take them back out any time before it closes.</p>';
+    return html;
+  }
+
+  function podCard(p) {
+    var phaseLabel = { open: 'Open · ' + countdown(p.closes_ts), soon: 'Opens ' + fullDate(p.opens_ts), closed: 'Drawing now', drawn: 'Drawn', cancelled: 'Cancelled' }[p.phase] || p.phase;
+    var html = '<article class="card pod">';
+    html += '<div class="art">' + (p.image_url ? '<img src="' + esc(p.image_url) + '" alt="" loading="lazy">' : emoji(p.emoji)) +
+      '<span class="phase ' + esc(p.phase) + '">' + esc(phaseLabel) + '</span></div>';
+    html += '<div class="body">';
+    html += '<h3>' + (p.image_url ? emoji(p.emoji) + ' ' : '') + esc(p.title) + '</h3>';
+    if (p.prize_value) html += '<div class="prize">' + esc(p.prize_value) + (p.winners_count > 1 ? ' · ' + p.winners_count + ' winners' : '') + '</div>';
+    else if (p.winners_count > 1) html += '<div class="prize">' + p.winners_count + ' winners</div>';
+    if (p.description) html += '<div class="desc">' + esc(p.description) + '</div>';
+    html += '<div class="facts"><span><b class="num">' + fmtN(p.total) + '</b> tickets in</span><span><b class="num">' + p.entrants + '</b> ' + (p.entrants === 1 ? 'person' : 'people') + '</span>' +
+      (p.phase === 'open' || p.phase === 'closed' ? '<span>Draws ' + esc(fullDate(p.closes_ts)) + '</span>' : '') +
+      (p.max_tickets_per_person ? '<span>Max ' + p.max_tickets_per_person + ' each</span>' : '') + '</div>';
+
+    if (p.phase === 'open') {
+      var target = drafts[p.pod_id] !== undefined ? drafts[p.pod_id] : p.mine;
+      var ceiling = p.mine + S.wallet.spendable;
+      if (p.max_tickets_per_person) ceiling = Math.min(ceiling, p.max_tickets_per_person);
+      var changed = target !== p.mine;
+      var chance = winChance(target, p.others, p.winners_count);
+      var share = (n(target) + p.others.reduce(function (a, b) { return a + n(b); }, 0));
+      share = share > 0 ? n(target) / share : 0;
+      html += '<div class="alloc">';
+      html += '<div class="alloc-row"><div class="stepper">' +
+        '<button type="button" data-step="-1" data-pod="' + esc(p.pod_id) + '" ' + (target <= 0 ? 'disabled' : '') + ' aria-label="One fewer">−</button>' +
+        '<input class="num" type="number" min="0" max="' + ceiling + '" value="' + target + '" data-input="' + esc(p.pod_id) + '" aria-label="Tickets in this reward">' +
+        '<button type="button" data-step="1" data-pod="' + esc(p.pod_id) + '" ' + (target >= ceiling ? 'disabled' : '') + ' aria-label="One more">+</button></div>' +
+        (changed
+          ? '<button class="btn primary" data-save="' + esc(p.pod_id) + '"' + (busy ? ' disabled' : '') + '>' + (target > p.mine ? 'Enter ' + (target - p.mine) : 'Take back ' + (p.mine - target)) + '</button>' +
+            '<button class="linkbtn" data-reset="' + esc(p.pod_id) + '">Undo</button>'
+          : (ceiling > p.mine ? '<button class="linkbtn" data-max="' + esc(p.pod_id) + '">All in (' + ceiling + ')</button>' : '')) +
+        '</div>';
+      html += '<div class="odds">' + (target > 0
+        ? 'Your chance: <b>' + pct(chance) + '</b> · ' + pct(share) + ' of the tickets' + (changed ? ' <span class="muted">(if you ' + (target > p.mine ? 'enter' : 'take them back') + ')</span>' : '')
+        : 'You have no tickets in yet.') + '</div>';
+      html += '<div class="meter"><span style="width:' + Math.round(chance * 100) + '%"></span></div>';
+      html += '</div>';
+    } else if (p.phase === 'closed' || p.phase === 'soon') {
+      if (p.mine) html += '<div class="alloc odds">You have <b>' + tickets(p.mine) + '</b> in · chance <b>' + pct(winChance(p.mine, p.others, p.winners_count)) + '</b></div>';
+    } else if (p.phase === 'drawn') {
+      var ws = S.winners.filter(function (w) { return w.pod_id === p.pod_id; });
+      html += '<div class="alloc winners-inline">' + (ws.length ? ws.map(function (w) {
+        return '<div class="w"><span class="avatar">' + esc(initials(w.name)) + '</span><div><b>' + esc(w.name) + '</b>' +
+          (w.user_id === S.me.userId ? ' — that’s you! 🎉' : '') + '<div class="muted" style="font-size:12px">' + tickets(w.tickets_in) + ' in</div></div></div>';
+      }).join('') : '<span class="muted">Nobody entered this one.</span>') +
+        (p.mine ? '<div class="muted" style="font-size:12px;margin-top:6px">You had ' + tickets(p.mine) + ' in.</div>' : '') + '</div>';
+    } else if (p.phase === 'cancelled' && p.mine) {
+      html += '<div class="alloc muted" style="font-size:13px">Cancelled — your tickets were refunded.</div>';
+    }
+    html += '</div></article>';
+    return html;
+  }
+
+  function renderKudos() {
+    var k = S.kudos;
+    var html = '<div class="kgrid"><div class="stack">';
+    html += '<div class="card"><div class="card-head"><h2>Badges</h2></div>';
+    html += k.badges.length ? '<div class="badges">' + k.badges.map(function (b) {
+      return '<span class="badge">' + (b.emoji ? esc(b.emoji) : JX) + ' ' + esc(b.label) + '</span>';
+    }).join('') + '</div>' : '<div class="empty" style="padding:18px">No badges yet — they unlock as ' + esc(BOOT.unitPlural) + ' come in.</div>';
+    if (k.next) {
+      var got = k.receivedTotal, pctDone = Math.min(100, Math.round(got / k.next.threshold * 100));
+      html += '<div class="progress">' + fmtN(k.next.need) + ' more to ' + (k.next.emoji ? esc(k.next.emoji) : JX) + ' <b>' + esc(k.next.label) + '</b>' +
+        '<div class="meter"><span style="width:' + pctDone + '%"></span></div></div>';
+    }
+    html += '</div>';
+    html += '<div class="card"><div class="card-head"><h2>This ' + esc(k.periodWord) + '</h2></div><div class="stats" style="grid-template-columns:1fr 1fr">' +
+      stat('Received', k.receivedPeriod, 'this ' + k.periodWord) +
+      stat('Left to give', k.remaining, 'refills ' + k.resets) + '</div>' +
+      (k.streak > 1 ? '<div class="progress">🔥 ' + k.streak + '-' + esc(k.periodWord) + ' giving streak</div>' : '') + '</div>';
+    html += '</div>';
+
+    var rows = kudosView === 'received' ? S.received : S.given;
+    html += '<div class="card"><div class="card-head"><h2>' + (kudosView === 'received' ? 'What people said about you' : 'What you said about others') + '</h2>' +
+      '<div class="seg"><button data-kv="received" aria-pressed="' + (kudosView === 'received') + '">Received</button><button data-kv="given" aria-pressed="' + (kudosView === 'given') + '">Given</button></div></div>';
+    html += rows.length ? '<div class="list">' + rows.map(function (r) {
+      var other = kudosView === 'received' ? r.giver : r.receiver;
+      return '<div class="item"><span class="avatar">' + esc(initials(other)) + '</span><div class="main">' +
+        '<div class="line1"><b>' + esc(other) + '</b> ' + (kudosView === 'received' ? 'gave you' : '—') + ' ' + JX.repeat(Math.min(5, r.dots)) + (r.dots > 1 ? ' <span class="muted">×' + r.dots + '</span>' : '') + '</div>' +
+        '<div class="reason">' + esc(r.reason) + '</div>' +
+        (r.value ? '<span class="chip">' + esc(r.value_emoji) + ' ' + esc(r.value) + '</span>' : '') +
+        '</div><div class="when">' + esc(when(r.ts)) + '</div></div>';
+    }).join('') + '</div>' : '<div class="empty"><div class="e">' + JX + '</div>' + (kudosView === 'received' ? 'Nothing yet — it’s coming.' : 'You haven’t given any yet. <code>/wag @someone why</code> in Slack.') + '</div>';
+    html += '</div></div>';
+    return html;
+  }
+
+  function renderWinners(list, admin) {
+    if (!list.length) return '<div class="card empty"><div class="e">🏆</div>No draws yet. The first winner shows up here.</div>';
+    var byPod = [], seen = {};
+    list.forEach(function (w) {
+      if (!seen[w.pod_id]) { seen[w.pod_id] = { pod: w, rows: [] }; byPod.push(seen[w.pod_id]); }
+      seen[w.pod_id].rows.push(w);
+    });
+    return '<div class="card"><div class="list">' + byPod.map(function (g) {
+      return g.rows.map(function (w) {
+        return '<div class="item"><span class="avatar">' + esc(initials(w.name)) + '</span><div class="main">' +
+          '<div class="line1"><b>' + esc(w.name) + '</b>' + (w.user_id === S.me.userId ? ' 🎉' : '') + ' won ' + emoji(w.emoji) + ' <b>' + esc(w.pod_title) + '</b>' +
+          (g.rows.length > 1 ? ' <span class="muted">(' + ordinal(w.place) + ')</span>' : '') + '</div>' +
+          '<div class="muted" style="font-size:13px">' + (w.prize_value ? esc(w.prize_value) + ' · ' : '') + tickets(w.tickets_in) + ' of ' + fmtN(w.pod_total_tickets) + ' in the draw · ' + w.entrants + ' ' + (w.entrants === 1 ? 'entrant' : 'entrants') + '</div>' +
+          (admin ? '<label class="check" style="margin-top:6px"><input type="checkbox" data-fulfill="' + esc(w.pod_id) + '|' + esc(w.user_id) + '" ' + (w.fulfilled ? 'checked' : '') + '> Prize delivered</label>'
+            : (w.fulfilled ? '<span class="chip">✓ delivered</span>' : '')) +
+          '</div><div class="when">' + esc(when(w.drawn_ts)) + '</div></div>';
+      }).join('');
+    }).join('') + '</div></div>';
+  }
+  function ordinal(i) { return i + (['th', 'st', 'nd', 'rd'][(i % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][i % 100] || 'th'); }
+
+  var KIND = { earn_received: 'Earned', earn_given: 'Earned for giving', grant: 'Bonus', enter: 'Entered', withdraw: 'Took back', refund: 'Refund' };
+  function renderHistory() {
+    if (!S.history.length) return '<div class="card empty"><div class="e">🎟️</div>No tickets yet. Every ' + esc(BOOT.unitSingular) + ' you receive adds one.</div>';
+    return '<div class="card"><div class="list">' + S.history.map(function (h) {
+      return '<div class="item"><div class="main"><div class="line1"><b>' + esc(KIND[h.kind] || h.kind) + '</b>' + (h.pod ? ' · ' + esc(h.pod) : '') +
+        (h.pending ? ' <span class="chip" style="margin:0">pending</span>' : '') + '</div>' +
+        '<div class="muted" style="font-size:13px">' + esc(h.note) + '</div></div>' +
+        '<div style="text-align:right"><div class="delta num ' + (h.delta >= 0 ? 'plus' : 'minus') + '">' + (h.delta >= 0 ? '+' : '−') + fmtN(Math.abs(h.delta)) + '</div><div class="when">' + esc(when(h.ts)) + '</div></div></div>';
+    }).join('') + '</div></div>';
+  }
+
+  // ---------- admin ----------
+  function toLocalInput(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    var p = function (x) { return (x < 10 ? '0' : '') + x; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function fromLocalInput(v) { return v ? new Date(v).toISOString() : ''; }
+
+  function renderAdmin() {
+    if (!A) return '<div class="loading"><img src="' + esc(BOOT.jackson) + '" alt=""><div>Loading admin…</div></div>';
+    var html = '';
+    var t = A.totals;
+    html += '<div class="tiles">' + [
+      ['Tickets earned', t.earned], ['Bonus granted', t.granted], ['Unspent (in wallets)', t.available],
+      ['In open draws', t.inPlay], ['Spent in draws', t.spent], ['Pending credit', t.pending]
+    ].map(function (x) { return '<div class="card tile stat"><div class="k">' + esc(x[0]) + '</div><div class="v num">' + fmtN(x[1]) + '</div></div>'; }).join('') + '</div>';
+
+    // Pod editor
+    var e = editing || {};
+    var isNew = !e.pod_id;
+    html += '<div class="card" id="editor"><div class="card-head"><h2>' + (isNew ? 'New reward' : 'Edit: ' + esc(e.title)) + '</h2>' +
+      (isNew ? '' : '<button class="linkbtn" data-newpod="1">+ New reward instead</button>') + '</div>';
+    html += '<form class="form" id="podform" autocomplete="off">' +
+      field('Title', '<input name="title" required maxlength="80" value="' + esc(e.title || '') + '" placeholder="Extra PTO day">', 'full') +
+      field('Description', '<textarea name="description" maxlength="600" placeholder="What it is, any rules, how it gets delivered">' + esc(e.description || '') + '</textarea>', 'full') +
+      field('Prize / value', '<input name="prize_value" maxlength="80" value="' + esc(e.prize_value || '') + '" placeholder="$100 Amazon gift card">') +
+      field('Emoji', '<input name="emoji" maxlength="8" value="' + esc(e.emoji || '🎁') + '">') +
+      field('Image link (optional)', '<input name="image_url" type="url" value="' + esc(e.image_url || '') + '" placeholder="https://…">', 'full', 'Must start with https://. Leave empty to show the emoji.') +
+      field('Winners', '<input name="winners_count" type="number" min="1" max="50" value="' + (e.winners_count || 1) + '">') +
+      field('Max tickets per person', '<input name="max_tickets_per_person" type="number" min="0" value="' + (e.max_tickets_per_person || 0) + '">', '', '0 = no cap') +
+      field('Opens', '<input name="opens_ts" type="datetime-local" value="' + toLocalInput(e.opens_ts) + '">', '', 'Blank = as soon as it is published') +
+      field('Closes and draws', '<input name="closes_ts" type="datetime-local" required value="' + toLocalInput(e.closes_ts) + '">', '', 'Drawn automatically within 15 minutes') +
+      field('Display order', '<input name="sort" type="number" value="' + (e.sort || 0) + '">', '', 'Lower shows first; ties sort by close time') +
+      (isNew || e.status === 'draft' ? '<div class="field"><label>&nbsp;</label><label class="check"><input type="checkbox" name="publish"> Publish now (otherwise saved as a draft)</label></div>' : '<div></div>') +
+      '<div class="full actions"><button class="btn primary" type="submit"' + (busy ? ' disabled' : '') + '>' + (isNew ? 'Create reward' : 'Save changes') + '</button>' +
+      (isNew ? '' : '<button class="btn" type="button" data-newpod="1">Cancel edit</button>') + '</div>' +
+      '</form></div>';
+
+    // Pod list
+    html += '<div class="section-title">Rewards</div>';
+    html += A.pods.length ? '<div class="card table-wrap"><table><thead><tr><th>Reward</th><th>Status</th><th class="r">Tickets</th><th class="r">People</th><th>Closes</th><th></th></tr></thead><tbody>' +
+      A.pods.slice().reverse().map(function (p) {
+        var acts = [];
+        if (p.status === 'draft' || p.status === 'live') acts.push('<button class="btn small" data-edit="' + esc(p.pod_id) + '">Edit</button>');
+        if (p.status === 'draft') acts.push('<button class="btn small primary" data-publish="' + esc(p.pod_id) + '">Publish</button>');
+        if (p.status === 'live') acts.push('<button class="btn small" data-draw="' + esc(p.pod_id) + '">Draw now</button>');
+        if (p.status === 'draft' || p.status === 'live') acts.push('<button class="btn small danger" data-cancel="' + esc(p.pod_id) + '">Cancel</button>');
+        return '<tr><td><b>' + emoji(p.emoji) + ' ' + esc(p.title) + '</b>' + (p.prize_value ? '<div class="muted" style="font-size:12px">' + esc(p.prize_value) + '</div>' : '') +
+          (p.entrantList.length ? '<details><summary>Who is in</summary><div style="font-size:13px;margin-top:4px">' + p.entrantList.map(function (x) {
+            return esc(x.name) + ' <span class="muted num">' + fmtN(x.tickets) + '</span>';
+          }).join('<br>') + '</div></details>' : '') + '</td>' +
+          '<td><span class="status-pill ' + esc(p.phase) + '">' + esc(p.phase) + '</span></td>' +
+          '<td class="r num">' + fmtN(p.total) + '</td><td class="r num">' + p.entrants + '</td>' +
+          '<td style="font-size:13px;white-space:nowrap">' + esc(fullDate(p.closes_ts)) + '</td>' +
+          '<td><div class="actions">' + acts.join('') + '</div></td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="card empty">No rewards yet — create the first one above.</div>';
+
+    // Winners / fulfilment
+    html += '<div class="section-title">Winners &amp; delivery</div>' + renderWinners(A.winners, true);
+
+    // People + grants
+    html += '<div class="section-title">People &amp; bonus tickets</div>';
+    html += '<div class="card"><form class="form grantgrid" id="grantform">' +
+      field('Tickets', '<input name="amount" type="number" step="1" value="1">') +
+      field('Why (they will see this)', '<input name="note" maxlength="140" placeholder="Work anniversary — 2 years!">') +
+      '<div class="field"><button class="btn primary" type="submit">Grant to selected</button></div>' +
+      '<div class="full muted" style="font-size:12px">Tick people below, then grant. A negative number removes tickets (never below zero).</div></form>';
+    html += '<div class="table-wrap" style="max-height:520px"><table><thead><tr><th><input type="checkbox" id="allpeople" aria-label="Select everyone"></th><th>Person</th><th class="r">Earned</th><th class="r">Bonus</th><th class="r">Unspent</th><th class="r">In draws</th><th class="r">Spent</th></tr></thead><tbody>' +
+      A.people.map(function (p) {
+        return '<tr><td><input type="checkbox" data-person="' + esc(p.user_id) + '"></td><td><b>' + esc(p.name) + '</b><div class="muted" style="font-size:12px">' + esc(p.email) + '</div></td>' +
+          '<td class="r num">' + fmtN(p.earned) + (p.pending ? '<div class="muted" style="font-size:11px">' + fmtN(p.pending) + ' pending</div>' : '') + '</td><td class="r num">' + fmtN(p.granted) + '</td>' +
+          '<td class="r num"><b>' + fmtN(p.available) + '</b></td><td class="r num">' + fmtN(p.inPlay) + '</td><td class="r num">' + fmtN(p.spent) + '</td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+
+    // Linking a Google login to a Slack person
+    html += '<div class="card" style="margin-top:14px"><form class="form grantgrid" id="linkform">' +
+      field('Person', '<select name="user">' + A.people.map(function (p) { return '<option value="' + esc(p.user_id) + '">' + esc(p.name) + '</option>'; }).join('') + '</select>') +
+      field('Google login', '<input name="google" type="email" placeholder="name@actaba.com">') +
+      '<div class="field"><button class="btn" type="submit">Link</button></div>' +
+      '<div class="full muted" style="font-size:12px">For anyone whose Google account differs from their Slack email, so the site can find their tickets. Leave the email empty to unlink.</div></form></div>';
+
+    // Settings
+    var s = A.settings;
+    html += '<div class="section-title">Settings</div>';
+    html += '<div class="card"><form class="form" id="settingsform">' +
+      field('Tickets per ' + esc(BOOT.unitSingular) + ' received', '<input name="perReceived" type="number" step="0.5" min="0" value="' + s.perReceived + '">', '', 'Changes apply to ' + esc(BOOT.unitPlural) + ' from now on') +
+      field('Tickets per ' + esc(BOOT.unitSingular) + ' given', '<input name="perGiven" type="number" step="0.5" min="0" value="' + s.perGiven + '">', '', '0 = giving earns nothing') +
+      field('Recent winners sit out (days)', '<input name="excludeDays" type="number" min="0" value="' + s.excludeDays + '">', '', '0 = anyone can win back to back') +
+      field('Rewards site link', '<input name="portalUrl" type="url" value="' + esc(s.portalUrl) + '">', '', 'Used in Slack posts, /wags rewards and App Home') +
+      '<label class="check"><input type="checkbox" name="announce" ' + (s.announce ? 'checked' : '') + '> Post openings, 24h reminders and draws to ' + esc(s.channel) + '</label>' +
+      '<label class="check"><input type="checkbox" name="dmWinners" ' + (s.dmWinners ? 'checked' : '') + '> DM winners</label>' +
+      '<div class="full muted" style="font-size:12px">Tickets count from ' + esc(fullDate(s.launch) || 'the beginning') + '. Scheduler: ' + esc(s.scheduler) + '.</div>' +
+      '<div class="full"><button class="btn primary" type="submit">Save settings</button></div></form></div>';
+
+    // Activity
+    html += '<div class="section-title">Recent ticket activity</div>';
+    html += A.activity.length ? '<div class="card table-wrap" style="max-height:420px"><table><thead><tr><th>When</th><th>Who</th><th>What</th><th class="r">Tickets</th></tr></thead><tbody>' +
+      A.activity.map(function (x) {
+        return '<tr><td class="muted" style="white-space:nowrap;font-size:13px">' + esc(when(x.ts)) + '</td><td>' + esc(x.name) + '</td><td style="font-size:13px">' + esc(KIND[x.kind] || x.kind) + (x.pod ? ' · ' + esc(x.pod) : '') + '<div class="muted">' + esc(x.note) + '</div></td>' +
+          '<td class="r num delta ' + (x.delta >= 0 ? 'plus' : 'minus') + '">' + (x.delta >= 0 ? '+' : '−') + fmtN(Math.abs(x.delta)) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="card empty">No ticket activity yet.</div>';
+    return html;
+  }
+  function field(label, input, cls, hint) {
+    return '<div class="field ' + (cls || '') + '"><label>' + label + '</label>' + input + (hint ? '<div class="hint">' + hint + '</div>' : '') + '</div>';
+  }
+
+  // ---------- actions ----------
+  function load() {
+    return call('portalLoad').then(function (state) {
+      S = state;
+      drafts = {};
+      if (!S.me.userId && S.me.isAdmin) tab = 'admin';   // an admin with no Slack account has no wallet to show
+      render();
+      if (S.me.isAdmin && tab === 'admin' && !A) loadAdmin();
+    }).catch(function (e) {
+      document.getElementById('app').innerHTML = '<div class="card error-box"><div style="font-size:40px">' + JX + '</div><p>' + esc(e.message) + '</p><button class="btn" onclick="location.reload()">Try again</button></div>';
+    });
+  }
+  function loadAdmin() {
+    return call('portalAdminLoad').then(function (a) { A = a; render(); }).catch(function (e) { toast(e.message, true); });
+  }
+  function adminDo(promise) {
+    busy = true; render();
+    return promise.then(function (res) {
+      busy = false;
+      if (res.admin) A = res.admin;
+      if (res.ok) { toast(res.message || 'Done.'); return call('portalLoad').then(function (st) { S = st; render(); return res; }); }
+      toast(res.error || 'That did not work.', true); render(); return res;
+    }).catch(function (e) { busy = false; toast(e.message, true); render(); });
+  }
+
+  function saveAllocation(podId) {
+    if (busy) return;
+    var target = drafts[podId];
+    if (target === undefined) return;
+    busy = true; render();
+    call('portalSetAllocation', podId, target).then(function (res) {
+      busy = false;
+      if (res.state) S = res.state;
+      delete drafts[podId];
+      toast(res.ok ? (res.message || 'Saved.') : res.error, !res.ok);
+      render();
+    }).catch(function (e) { busy = false; toast(e.message, true); render(); });
+  }
+
+  function podById(id) { return S.pods.filter(function (p) { return p.pod_id === id; })[0]; }
+  function clampTarget(p, v) {
+    var ceiling = p.mine + S.wallet.spendable;
+    if (p.max_tickets_per_person) ceiling = Math.min(ceiling, p.max_tickets_per_person);
+    v = Math.floor(n(v));
+    return Math.max(0, Math.min(ceiling, v));
+  }
+
+  document.addEventListener('click', function (ev) {
+    var el = ev.target.closest('button, input[type=checkbox]');
+    if (!el) return;
+    var d = el.dataset;
+    if (d.tab) { tab = d.tab; render(); if (tab === 'admin' && !A) loadAdmin(); return; }
+    if (d.kv) { kudosView = d.kv; render(); return; }
+    if (d.step) {
+      var p = podById(d.pod); if (!p) return;
+      var cur = drafts[p.pod_id] !== undefined ? drafts[p.pod_id] : p.mine;
+      var next = clampTarget(p, cur + Number(d.step));
+      if (next === p.mine) delete drafts[p.pod_id]; else drafts[p.pod_id] = next;
+      render(); return;
+    }
+    if (d.max) { var pm = podById(d.max); drafts[pm.pod_id] = clampTarget(pm, 1e9); render(); return; }
+    if (d.reset) { delete drafts[d.reset]; render(); return; }
+    if (d.save) { saveAllocation(d.save); return; }
+    if (d.newpod) { editing = null; render(); return; }
+    if (d.edit) {
+      editing = A.pods.filter(function (x) { return x.pod_id === d.edit; })[0] || null;
+      render();
+      var ed = document.getElementById('editor'); if (ed) ed.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    if (d.publish) { adminDo(call('portalAdminPublish', d.publish)); return; }
+    if (d.draw) {
+      var pd = A.pods.filter(function (x) { return x.pod_id === d.draw; })[0];
+      if (!confirmInline(el, 'Draw ' + (pd ? pd.title : 'it') + ' now?')) return;
+      adminDo(call('portalAdminDraw', d.draw)); return;
+    }
+    if (d.cancel) {
+      if (!confirmInline(el, 'Cancel and refund?')) return;
+      adminDo(call('portalAdminCancel', d.cancel, '')); return;
+    }
+    if (d.fulfill) {
+      var parts = d.fulfill.split('|');
+      adminDo(call('portalAdminFulfill', parts[0], parts[1], el.checked)); return;
+    }
+    if (el.id === 'allpeople') {
+      document.querySelectorAll('[data-person]').forEach(function (c) { c.checked = el.checked; });
+    }
+  });
+
+  // Two-click confirm without window.confirm (blocked inside Google Sites iframes).
+  function confirmInline(el, label) {
+    if (el.dataset.armed === '1') return true;
+    el.dataset.armed = '1';
+    var old = el.textContent;
+    el.textContent = label;
+    setTimeout(function () { if (el.isConnected) { el.dataset.armed = ''; el.textContent = old; } }, 4000);
+    return false;
+  }
+
+  document.addEventListener('input', function (ev) {
+    var el = ev.target;
+    if (el.dataset && el.dataset.input) {
+      var p = podById(el.dataset.input); if (!p) return;
+      var v = clampTarget(p, el.value);
+      if (v === p.mine) delete drafts[p.pod_id]; else drafts[p.pod_id] = v;
+      clearTimeout(el._t);
+      el._t = setTimeout(function () {
+        render();
+        var again = document.querySelector('[data-input="' + CSS.escape(p.pod_id) + '"]');
+        if (again) { again.focus(); var len = String(again.value).length; try { again.setSelectionRange(len, len); } catch (e) {} }
+      }, 350);
+    }
+  });
+
+  document.addEventListener('submit', function (ev) {
+    var f = ev.target;
+    ev.preventDefault();
+    var data = {};
+    Array.prototype.forEach.call(f.elements, function (x) {
+      if (!x.name) return;
+      data[x.name] = x.type === 'checkbox' ? x.checked : x.value;
+    });
+    if (f.id === 'podform') {
+      data.opens_ts = fromLocalInput(data.opens_ts);
+      data.closes_ts = fromLocalInput(data.closes_ts);
+      if (editing) data.pod_id = editing.pod_id;
+      adminDo(call('portalAdminSavePod', data)).then(function (res) { if (res && res.ok) editing = null; render(); });
+    } else if (f.id === 'grantform') {
+      var ids = Array.prototype.map.call(document.querySelectorAll('[data-person]:checked'), function (c) { return c.dataset.person; });
+      if (!ids.length) { toast('Tick at least one person first.', true); return; }
+      adminDo(call('portalAdminGrant', ids, Number(data.amount), data.note));
+    } else if (f.id === 'linkform') {
+      adminDo(call('portalAdminLinkEmail', data.user, data.google));
+    } else if (f.id === 'settingsform') {
+      adminDo(call('portalAdminSettings', data));
+    }
+  });
+
+  // Keep countdowns honest without a reload, and pick up other people's entries.
+  setInterval(function () {
+    if (busy || Object.keys(drafts).length || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    if (tab === 'rewards') render();
+  }, 60000);
+  setInterval(function () {
+    if (busy || Object.keys(drafts).length || document.hidden) return;
+    if (tab !== 'admin') call('portalLoad').then(function (st) { S = st; render(); }).catch(function () {});
+  }, 5 * 60000);
+
+  load();
+})();
+</script>
+</body>
+</html>
