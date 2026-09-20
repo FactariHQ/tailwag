@@ -43,6 +43,11 @@ the bot token. Config accessors are now private, editor functions are owner-only
 only their own trigger id. Rotating the Slack bot token is recommended.
 
 ## Open items
-- GitHub: commits d0b3cf8 and 9b25326 are local to the build session; the session's git proxy has no
-  write access to FactariHQ/tailwag. Needs the repo added to the session, or a push via the connector.
+- Live Apps Script lags `main` by one commit: upstream's `MAX_PER_RECIPIENT_PER_PERIOD` default of 5.
+  Only a default, and the live Config tab already carries its own value, so nothing is wrong today —
+  but `npm run push:portal` and a `clasp push` on the Slack project will close the gap. The build
+  session's clasp token has expired (`invalid_rapt`), so it needs `clasp login` as robots@actaba.com.
 - No reward pods exist yet — prizes are Josh's call.
+- Link josh972 to josh@actaba.com on the Admin tab so Josh's own wallet shows up.
+- Rotate the Slack bot token (the old anonymous `/exec` page could read it before this release).
+- `/wag-admin sync` to fill in the roster emails that are still blank.
