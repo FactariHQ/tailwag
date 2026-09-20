@@ -11,9 +11,10 @@
  * Creates or repairs the backing spreadsheet, writes the config defaults, and
  * generates a URL secret. Run this first.
  */
-function setupSpreadsheet() {
+function setupSpreadsheet_() {
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty(PROP_SPREADSHEET_ID);
+  var id = props.getProperty(PROP_SPREADSHEET_ID) || builtInSpreadsheetId_();
+  if (id && !props.getProperty(PROP_SPREADSHEET_ID)) props.setProperty(PROP_SPREADSHEET_ID, id);
   var ss;
 
   if (id) {
@@ -28,7 +29,7 @@ function setupSpreadsheet() {
   __sheetCache = {};
 
   // --- tabs ----------------------------------------------------------------
-  ['CONFIG', 'ROSTER', 'LEDGER', 'BALANCES', 'BADGES', 'RAFFLE', 'EVENTS'].forEach(function (key) {
+  ['CONFIG', 'ROSTER', 'LEDGER', 'BALANCES', 'BADGES', 'RAFFLE', 'EVENTS', 'PODS', 'TICKETS', 'WINNERS'].forEach(function (key) {
     var name = SHEETS[key];
     var s = ss.getSheetByName(name);
     if (!s) s = ss.insertSheet(name);
@@ -54,7 +55,8 @@ function setupSpreadsheet() {
     var live = s.getLastColumn() > 0
       ? s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String)
       : [];
-    ['period_key', 'month_key', 'week_key', 'period', 'last_gave_period'].forEach(function (colName) {
+    ['period_key', 'month_key', 'week_key', 'period', 'last_gave_period',
+      'opens_ts', 'closes_ts', 'announced_ts', 'reminded_ts', 'drawn_ts', 'fulfilled_ts', 'pod_id', 'ref'].forEach(function (colName) {
       var at = live.indexOf(colName);
       if (at !== -1) s.getRange(1, at + 1, Math.max(s.getMaxRows ? s.getMaxRows() : 1000, 1000), 1)
         .setNumberFormat('@');
@@ -95,9 +97,9 @@ function setupSpreadsheet() {
 
   // Notes are documentation, not data: bring them up to date with this version
   // so an upgraded sheet never explains the app it used to be.
-  refreshConfigNotes();
+  refreshConfigNotes_();
 
-  var secret = cfgStr('URL_SECRET');
+  var secret = cfgStr_('URL_SECRET');
   var msg = [
     'Tail Wag is set up.',
     '',
@@ -119,7 +121,7 @@ function setupSpreadsheet() {
  * Prints the Request URL to paste into Slack, secret included.
  * Run after the web app has been deployed at least once.
  */
-function showRequestUrl() {
+function showRequestUrl_() {
   var url;
   try {
     url = ScriptApp.getService().getUrl();
@@ -134,7 +136,7 @@ function showRequestUrl() {
   // Run from the editor, getUrl() returns the /dev HEAD url, which only the
   // signed-in owner can open. Slack is anonymous, so it needs /exec.
   url = String(url).replace(/\/dev$/, '/exec');
-  var full = url + '?k=' + cfgStr('URL_SECRET');
+  var full = url + '?k=' + cfgStr_('URL_SECRET');
   console.log('Request URL for all three Slack fields:\n\n' + full +
     '\n\nLeaderboard page (safe to share internally):\n\n' + full + '&period=period');
   return full;
@@ -144,29 +146,29 @@ function showRequestUrl() {
  * Checks the wiring end to end and reports what is missing, without sending
  * anything to the team.
  */
-function selfTest() {
+function selfTest_() {
   var problems = [];
   var notes = [];
 
-  if (!cfgStr('SLACK_BOT_TOKEN')) problems.push('SLACK_BOT_TOKEN is empty in the Config tab.');
-  if (!cfgStr('URL_SECRET')) problems.push('URL_SECRET is empty — run setupSpreadsheet().');
-  if (!cfgStr('ALLOWED_TEAM_ID')) notes.push('ALLOWED_TEAM_ID is empty. Set it to lock the app to your workspace.');
+  if (!cfgStr_('SLACK_BOT_TOKEN')) problems.push('SLACK_BOT_TOKEN is empty in the Config tab.');
+  if (!cfgStr_('URL_SECRET')) problems.push('URL_SECRET is empty — run setupSpreadsheet().');
+  if (!cfgStr_('ALLOWED_TEAM_ID')) notes.push('ALLOWED_TEAM_ID is empty. Set it to lock the app to your workspace.');
 
-  if (cfgStr('SLACK_BOT_TOKEN')) {
+  if (cfgStr_('SLACK_BOT_TOKEN')) {
     var auth = slackApi_('auth.test', {}, true);
     if (!auth.ok) {
       problems.push('Slack rejected the bot token: ' + auth.error);
     } else {
       notes.push('Connected to ' + auth.team + ' as ' + auth.user + '.');
-      if (!cfgStr('ALLOWED_TEAM_ID')) {
-        setConfig('ALLOWED_TEAM_ID', auth.team_id);
+      if (!cfgStr_('ALLOWED_TEAM_ID')) {
+        setConfig_('ALLOWED_TEAM_ID', auth.team_id);
         notes.push('ALLOWED_TEAM_ID set automatically to ' + auth.team_id + '.');
       }
     }
 
-    var channel = resolveChannel_(cfgStr('ANNOUNCE_CHANNEL'));
+    var channel = resolveChannel_(cfgStr_('ANNOUNCE_CHANNEL'));
     if (!channel) {
-      problems.push('Cannot resolve ANNOUNCE_CHANNEL (' + cfgStr('ANNOUNCE_CHANNEL') + ').');
+      problems.push('Cannot resolve ANNOUNCE_CHANNEL (' + cfgStr_('ANNOUNCE_CHANNEL') + ').');
     } else if (channel.charAt(0) === '#') {
       // resolveChannel_ fell back to the raw name, so conversations.list never
       // matched it. Asking conversations.info about "#name" returns the useless
@@ -179,10 +181,10 @@ function selfTest() {
       // with invalid_arguments, which reads like a bad channel ID and is not.
       var probe = slackApiGet_('conversations.info', { channel: channel }, true);
       if (!probe.ok) {
-        notes.push('Could not read ' + cfgStr('ANNOUNCE_CHANNEL') + ' (' + probe.error +
+        notes.push('Could not read ' + cfgStr_('ANNOUNCE_CHANNEL') + ' (' + probe.error +
           '). Invite the bot with /invite @TailWag.');
       } else if (probe.channel && probe.channel.is_member === false) {
-        problems.push('The bot is not in ' + cfgStr('ANNOUNCE_CHANNEL') + '. Run /invite @TailWag there.');
+        problems.push('The bot is not in ' + cfgStr_('ANNOUNCE_CHANNEL') + '. Run /invite @TailWag there.');
       } else {
         notes.push('Announcement channel OK: #' + (probe.channel ? probe.channel.name : channel) + '.');
       }
@@ -208,7 +210,7 @@ function selfTest() {
     // must not be chained onto blindly — it used to print "null?k=<secret>".
     var url = ScriptApp.getService().getUrl();
     if (url) {
-      notes.push('Web app URL: ' + String(url).replace(/\/dev$/, '/exec') + '?k=' + cfgStr('URL_SECRET'));
+      notes.push('Web app URL: ' + String(url).replace(/\/dev$/, '/exec') + '?k=' + cfgStr_('URL_SECRET'));
     } else {
       notes.push('Apps Script did not report a web app URL. That is normal when the deployment was ' +
         'made from Deploy → New deployment; copy the /exec URL from Deploy → Manage deployments.');
@@ -229,7 +231,7 @@ function selfTest() {
  * beside each key describes the app people are actually using — setup only
  * ever adds missing keys, so old notes would otherwise sit there forever.
  */
-function refreshConfigNotes() {
+function refreshConfigNotes_() {
   var s = sheet_(SHEETS.CONFIG);
   var last = s.getLastRow();
   if (last < 2) return 'Config tab is empty — run setupSpreadsheet() first.';
@@ -272,7 +274,7 @@ function removeUser_(userId) {
  * Seeds a handful of fake tailwags so the leaderboard and App Home can be reviewed
  * before the team is let loose. Run clearDemoData() afterwards.
  */
-function seedDemoData() {
+function seedDemoData_() {
   var people = [
     ['U_DEMO_1', 'Ada'], ['U_DEMO_2', 'Bo'], ['U_DEMO_3', 'Cleo'],
     ['U_DEMO_4', 'Dev'], ['U_DEMO_5', 'Esme']
@@ -284,7 +286,7 @@ function seedDemoData() {
     'caught the billing error before it went out',
     'trained the new tech without being asked'
   ];
-  var values = valueList();
+  var values = valueList_();
 
   people.forEach(function (p) {
     var bal = getBalance_(p[0], p[1], false);
@@ -324,7 +326,7 @@ function seedDemoData() {
 }
 
 /** Removes everything seedDemoData() created. */
-function clearDemoData() {
+function clearDemoData_() {
   var removed = 0;
 
   var ledger = sheet_(SHEETS.LEDGER);
@@ -347,4 +349,40 @@ function clearDemoData() {
 
   cacheDropAll_();
   return 'Removed ' + removed + ' demo rows.';
+}
+
+/** Editor entry point — owner only. See ownerOnly_(). */
+function setupSpreadsheet() {
+  ownerOnly_('setupSpreadsheet');
+  return setupSpreadsheet_();
+}
+
+/** Editor entry point — owner only. See ownerOnly_(). */
+function showRequestUrl() {
+  ownerOnly_('showRequestUrl');
+  return showRequestUrl_();
+}
+
+/** Editor entry point — owner only. See ownerOnly_(). */
+function selfTest() {
+  ownerOnly_('selfTest');
+  return selfTest_();
+}
+
+/** Editor entry point — owner only. See ownerOnly_(). */
+function refreshConfigNotes() {
+  ownerOnly_('refreshConfigNotes');
+  return refreshConfigNotes_();
+}
+
+/** Editor entry point — owner only. See ownerOnly_(). */
+function seedDemoData() {
+  ownerOnly_('seedDemoData');
+  return seedDemoData_();
+}
+
+/** Editor entry point — owner only. See ownerOnly_(). */
+function clearDemoData() {
+  ownerOnly_('clearDemoData');
+  return clearDemoData_();
 }
