@@ -256,7 +256,10 @@ function createEnvironment(options = {}) {
     lockHeld: false,
     uuidCounter: 0,
     batchSeq: 0,        // which fetchAll batch a recorded call belonged to
-    currentBatch: null
+    currentBatch: null,
+    ownerEmail: 'robots@actaba.com',
+    activeUser: 'robots@actaba.com',   // '' = anonymous visitor
+    scriptId: 'SCRIPT_TEST_ID'
   };
 
   function jsonResponse(obj) {
@@ -276,7 +279,7 @@ function createEnvironment(options = {}) {
     // refuses them the same way, and a POST-shaped read fails a test here
     // instead of at 5pm on a Friday.
     const READ_ONLY_METHODS = [
-      'users.info', 'users.list', 'conversations.list',
+      'users.info', 'users.lookupByEmail', 'users.list', 'conversations.list',
       'conversations.info', 'conversations.history'
     ];
     const isGet = !params || String(params.method || 'get').toLowerCase() === 'get';
@@ -291,6 +294,12 @@ function createEnvironment(options = {}) {
         const id = decodeURIComponent(String(url).split('user=')[1] || '').split('&')[0];
         const u = state.users[id];
         return jsonResponse(u ? { ok: true, user: u } : { ok: false, error: 'user_not_found' });
+      }
+      case 'users.lookupByEmail': {
+        const email = decodeURIComponent(String(url).split('email=')[1] || '').split('&')[0].toLowerCase();
+        const u = Object.keys(state.users).map((k) => state.users[k])
+          .find((x) => String(x.profile && x.profile.email || '').toLowerCase() === email);
+        return jsonResponse(u ? { ok: true, user: u } : { ok: false, error: 'users_not_found' });
       }
       case 'conversations.list':
         return jsonResponse({ ok: true, channels: state.channels, response_metadata: { next_cursor: '' } });
@@ -362,7 +371,10 @@ function createEnvironment(options = {}) {
       formatDate,
       getUuid: () => {
         state.uuidCounter += 1;
-        return `00000000-0000-4000-8000-${String(state.uuidCounter).padStart(12, '0')}`;
+        // Unique in the leading characters too, because ids are cut from the
+        // front of the UUID (od_ + 16 hex) exactly as in production.
+        const c = state.uuidCounter.toString(16).padStart(8, '0');
+        return `${c}-0000-4000-8000-${String(state.uuidCounter).padStart(12, '0')}`;
       },
       computeHmacSha256Signature: (value, key) => {
         const buf = crypto.createHmac('sha256', key).update(value, 'utf8').digest();
@@ -411,11 +423,15 @@ function createEnvironment(options = {}) {
         setXFrameOptionsMode() { return this; },
         getContent() { return this._html; }
       }),
+      createHtmlOutputFromFile: (name) => ({
+        getContent() { return name === 'PortalLogo' ? 'data:image/webp;base64,TEST' : ''; }
+      }),
       createTemplateFromFile: (name) => ({
         _name: name,
         evaluate() {
           return {
             _data: this.data,
+            _boot: this.boot,
             setTitle() { return this; },
             addMetaTag() { return this; },
             setXFrameOptionsMode() { return this; },
@@ -425,8 +441,14 @@ function createEnvironment(options = {}) {
       })
     },
 
+    Session: {
+      getActiveUser: () => ({ getEmail: () => state.activeUser }),
+      getEffectiveUser: () => ({ getEmail: () => state.ownerEmail })
+    },
+
     ScriptApp: {
       _triggers: [],
+      getScriptId: () => state.scriptId,
       getProjectTriggers() { return this._triggers.slice(); },
       deleteTrigger(t) { this._triggers = this._triggers.filter((x) => x !== t); },
       newTrigger(fn) {
@@ -442,6 +464,7 @@ function createEnvironment(options = {}) {
           atHour() { return this; },
           nearMinute() { return this; },
           everyDays() { return this; },
+          everyHours() { return this; },
           // Apps Script throws on anything but these, and a throw here means a
           // broken install in production — so the fake refuses them too.
           everyMinutes(n) {
@@ -490,6 +513,7 @@ function createEnvironment(options = {}) {
       sandbox.__args = args;
       return vm.runInContext(`${fn}.apply(null, __args)`, sandbox);
     },
+    setActiveUser: (email) => { state.activeUser = email; },
     setNow: (d) => { state.nowValue = d instanceof Date ? d : new Date(d); },
     setRandom: (values) => { state.randomQueue = values.slice(); },
     addUser: (id, name, extra = {}) => {
@@ -499,7 +523,7 @@ function createEnvironment(options = {}) {
       }, extra);
     },
     setConfigValue: (key, value) => {
-      api.call('setConfig', key, value);
+      api.call('setConfig_', key, value);
       vm.runInContext('__configCache = null;', sandbox);
     },
     sheetRows: (name) => api.call('readSheet_', name),

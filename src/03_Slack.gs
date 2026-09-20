@@ -13,7 +13,7 @@ var SLACK_API = 'https://slack.com/api/';
  * @return {Object} parsed response, or {ok:false,error:...}
  */
 function slackApi_(method, payload, muteErrors) {
-  var token = cfgStr('SLACK_BOT_TOKEN');
+  var token = cfgStr_('SLACK_BOT_TOKEN');
   if (!token) {
     if (!muteErrors) logError_('slack.no_token', '', method);
     return { ok: false, error: 'missing_bot_token' };
@@ -45,7 +45,7 @@ function slackApi_(method, payload, muteErrors) {
  * @return {Array<Object>} parsed responses, index-aligned with calls
  */
 function slackApiAll_(calls) {
-  var token = cfgStr('SLACK_BOT_TOKEN');
+  var token = cfgStr_('SLACK_BOT_TOKEN');
   if (!token || !calls.length) return calls.map(function () { return { ok: false, error: 'missing_bot_token' }; });
   var requests = calls.map(function (c) {
     return {
@@ -69,7 +69,7 @@ function slackApiAll_(calls) {
 
 /** GET-style Slack Web API call with query parameters. */
 function slackApiGet_(method, params, muteErrors) {
-  var token = cfgStr('SLACK_BOT_TOKEN');
+  var token = cfgStr_('SLACK_BOT_TOKEN');
   if (!token) return { ok: false, error: 'missing_bot_token' };
   var qs = Object.keys(params || {}).map(function (k) {
     return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
@@ -185,7 +185,7 @@ function prefetchProfiles_(userIds) {
   });
   if (missing.length < 2) return;   // one lookup is not worth batching
 
-  var token = cfgStr('SLACK_BOT_TOKEN');
+  var token = cfgStr_('SLACK_BOT_TOKEN');
   if (!token) return;
   var requests = missing.map(function (id) {
     return {

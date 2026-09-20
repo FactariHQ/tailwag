@@ -18,7 +18,7 @@ function now_() {
  * @param {string} pattern Java SimpleDateFormat pattern
  */
 function fmt_(d, pattern) {
-  return Utilities.formatDate(d, cfgStr('TIMEZONE') || 'America/Denver', pattern);
+  return Utilities.formatDate(d, cfgStr_('TIMEZONE') || 'America/Denver', pattern);
 }
 
 /**
@@ -39,7 +39,7 @@ function localDay_(d) {
  */
 function weekStart_(d) {
   var day = localDay_(d);
-  var startDow = DAY_INDEX[String(cfgStr('WEEK_START_DAY') || 'MONDAY').toUpperCase()];
+  var startDow = DAY_INDEX[String(cfgStr_('WEEK_START_DAY') || 'MONDAY').toUpperCase()];
   if (startDow === undefined) startDow = 1;
   var dow = day.getUTCDay();
   var delta = (dow - startDow + 7) % 7;
@@ -57,7 +57,7 @@ function weekKey_(d) {
   var ws = weekStart_(d || now_());
   var year = ws.getUTCFullYear();
   var jan1 = new Date(Date.UTC(year, 0, 1));
-  var startDow = DAY_INDEX[String(cfgStr('WEEK_START_DAY') || 'MONDAY').toUpperCase()];
+  var startDow = DAY_INDEX[String(cfgStr_('WEEK_START_DAY') || 'MONDAY').toUpperCase()];
   if (startDow === undefined) startDow = 1;
   // First week-start on or after Jan 1.
   var firstDelta = (startDow - jan1.getUTCDay() + 7) % 7;
@@ -75,7 +75,7 @@ function weekKey_(d) {
 function weekKeyForYearEdge_(ws) {
   var year = ws.getUTCFullYear() - 1;
   var jan1 = new Date(Date.UTC(year, 0, 1));
-  var startDow = DAY_INDEX[String(cfgStr('WEEK_START_DAY') || 'MONDAY').toUpperCase()];
+  var startDow = DAY_INDEX[String(cfgStr_('WEEK_START_DAY') || 'MONDAY').toUpperCase()];
   if (startDow === undefined) startDow = 1;
   var firstDelta = (startDow - jan1.getUTCDay() + 7) % 7;
   var firstStart = new Date(jan1.getTime() + firstDelta * 86400000);
@@ -90,7 +90,7 @@ function dayKey_(d) {
 
 /** True when allowances refill daily rather than weekly. */
 function isDailyAllowance_() {
-  return String(cfgStr('ALLOWANCE_PERIOD') || 'week').toLowerCase().indexOf('day') === 0;
+  return String(cfgStr_('ALLOWANCE_PERIOD') || 'week').toLowerCase().indexOf('day') === 0;
 }
 
 /**
@@ -126,7 +126,7 @@ function periodWord_() {
 /** When the current allowance period ends, as friendly text. */
 function periodResetText_() {
   if (isDailyAllowance_()) return 'midnight tonight';
-  var startDay = String(cfgStr('WEEK_START_DAY') || 'MONDAY');
+  var startDay = String(cfgStr_('WEEK_START_DAY') || 'MONDAY');
   var pretty = startDay.charAt(0) + startDay.slice(1).toLowerCase();
   return pretty + ' morning';
 }
@@ -225,9 +225,10 @@ function cacheDropAll_() {
     'leaderboard.period', 'leaderboard.week', 'leaderboard.day',
     'leaderboard.month', 'leaderboard.all'].forEach(cacheDrop_);
   // Header layouts change when the sheet is upgraded, so they must go too.
-  ['Config', 'Roster', 'Ledger', 'Balances', 'Badges', 'Raffle', 'Events']
+  ['Config', 'Roster', 'Ledger', 'Balances', 'Badges', 'Raffle', 'Events', 'Pods', 'Tickets', 'Winners']
     .forEach(function (name) { cacheDrop_('header.' + name); });
   if (typeof raffleIndexDirty_ === 'function') raffleIndexDirty_();
+  if (typeof rewardsCacheDrop_ === 'function') rewardsCacheDrop_();
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +243,7 @@ var LOG_LEVELS = { DEBUG: 10, INFO: 20, WARN: 30, ERROR: 40 };
  */
 function logEvent_(level, type, actor, detail) {
   try {
-    var want = LOG_LEVELS[String(cfgStr('LOG_LEVEL') || 'INFO').toUpperCase()] || 20;
+    var want = LOG_LEVELS[String(cfgStr_('LOG_LEVEL') || 'INFO').toUpperCase()] || 20;
     if ((LOG_LEVELS[level] || 20) < want) return;
     var d = typeof detail === 'string' ? detail : JSON.stringify(detail);
     if (d && d.length > 4000) d = d.slice(0, 4000) + '…';
@@ -267,8 +268,8 @@ function logDebug_(type, actor, detail) { logEvent_('DEBUG', type, actor, detail
  * called is a config change rather than a deploy.
  */
 function wagWord_(n) {
-  var one = cfgStr('UNIT_SINGULAR') || 'tailwag';
-  var many = cfgStr('UNIT_PLURAL') || 'tailwags';
+  var one = cfgStr_('UNIT_SINGULAR') || 'tailwag';
+  var many = cfgStr_('UNIT_PLURAL') || 'tailwags';
   return Math.abs(n) === 1 ? one : many;
 }
 
@@ -278,7 +279,7 @@ function wagWord_(n) {
  * type to give — rename the emoji in Config and the whole app follows.
  */
 function wagRun_(n) {
-  var name = cfgStr('EMOJI_TRIGGER') || 'jackson';
+  var name = cfgStr_('EMOJI_TRIGGER') || 'jackson';
   var capped = Math.min(n, 10);
   var s = '';
   for (var i = 0; i < capped; i++) s += ':' + name + ':';

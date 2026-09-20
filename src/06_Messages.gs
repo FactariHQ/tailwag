@@ -136,7 +136,14 @@ function buildRecipientDm_(award, req, channelId, permalink) {
   var tail = [];
   if (req.value) tail.push(req.value.emoji + ' ' + escapeSlack_(req.value.label));
   tail.push(award.receivedTotal + ' ' + wagWord_(award.receivedTotal) + ' all-time');
-  if (cfgBool('RAFFLE_ENABLED') && award.raffleEntriesTotal) {
+  if (cfgBool_('REWARDS_ENABLED') && cfgStr_('REWARDS_LAUNCH_TS')) {
+    var earned = tix_(award.dots * num_(cfgNum_('TICKETS_PER_WAG_RECEIVED')));
+    if (earned > 0) {
+      var rurl = cfgStr_('REWARDS_PORTAL_URL');
+      tail.push('🎟️ +' + ticketWord_(earned) + (rurl ? ' — <' + rurl + '|spend them>' : ''));
+    }
+  }
+  if (cfgBool_('RAFFLE_ENABLED') && award.raffleEntriesTotal) {
     tail.push(award.raffleEntriesTotal + ' raffle ' + (award.raffleEntriesTotal === 1 ? 'entry' : 'entries') + ' this month');
   }
   lines.push(tail.join('  ·  '));
@@ -172,13 +179,16 @@ function buildBalanceCard_(bal, userId) {
   if (num_(bal.remaining) === 0) {
     context.push('Out of tailwags — refills ' + periodResetText_() + '.');
   }
-  if (cfgBool('STREAKS_ENABLED') && num_(bal.streak) > 1) {
+  if (cfgBool_('STREAKS_ENABLED') && num_(bal.streak) > 1) {
     context.push(':fire: ' + num_(bal.streak) + '-' + word + ' giving streak');
   }
-  if (cfgBool('RAFFLE_ENABLED')) {
+  if (cfgBool_('RAFFLE_ENABLED')) {
     var entries = myRaffleEntries_(userId, monthKey_());
     context.push('Raffle: ' + entries + ' ' + (entries === 1 ? 'entry' : 'entries') + ' in the ' +
       fmt_(now_(), 'MMMM') + ' drawing');
+  }
+  if (cfgBool_('REWARDS_ENABLED')) {
+    context.push('🎟️ `/wags rewards` for your tickets and what is up for grabs');
   }
   if (bal.pool === 'manager') context.push('Manager pool');
   if (context.length) blocks.push(contextBlock_(context.join('  ·  ')));
@@ -263,7 +273,7 @@ function buildDigest_(periodLabel, rows, givers, stats, values) {
 
 /** The monthly raffle announcement. */
 function buildRaffleAnnouncement_(period, winners, totalEntries, entrantCount) {
-  var prize = cfgStr('RAFFLE_PRIZE');
+  var prize = cfgStr_('RAFFLE_PRIZE');
   var blocks = [
     headerBlock_('🎟️ Tail Wag raffle — ' + period),
     sectionBlock_(winners.map(function (w) {
@@ -283,21 +293,21 @@ function buildRaffleAnnouncement_(period, winners, totalEntries, entrantCount) {
 function buildHelpCard_(userId) {
   var word = periodWord_();
   var allowance = allowanceFor_(userId);
-  var cap = cfgNum('MAX_PER_RECIPIENT_PER_PERIOD');
-  var trigger = ':' + cfgStr('EMOJI_TRIGGER') + ':';
+  var cap = cfgNum_('MAX_PER_RECIPIENT_PER_PERIOD');
+  var trigger = ':' + cfgStr_('EMOJI_TRIGGER') + ':';
 
   var lines = [];
   lines.push('*Giving a tailwag*');
   lines.push('`/wag @someone what they did` — the reason is the point; the tailwag is the receipt.');
   lines.push('`/wag @sam @dana x2 covered the whole weekend` — several people, more than one each.');
-  if (cfgBool('ALLOW_EMOJI_GIVING')) {
+  if (cfgBool_('ALLOW_EMOJI_GIVING')) {
     lines.push('Or just type it in any channel: `@sam ' + trigger + ' saved me two hours today`.');
   }
 
-  if (cfgBool('VALUES_ENABLED')) {
+  if (cfgBool_('VALUES_ENABLED')) {
     lines.push('');
-    lines.push('*Tag the value* (optional' + (cfgBool('VALUE_REQUIRED') ? ' — currently required' : '') + ')');
-    lines.push(valueList().map(function (v) {
+    lines.push('*Tag the value* (optional' + (cfgBool_('VALUE_REQUIRED') ? ' — currently required' : '') + ')');
+    lines.push(valueList_().map(function (v) {
       return v.emoji + ' `#' + v.tag + '` ' + escapeSlack_(v.label);
     }).join('\n'));
   }
@@ -305,24 +315,39 @@ function buildHelpCard_(userId) {
   lines.push('');
   lines.push('*The rules*');
   lines.push('• *' + allowance + ' ' + wagWord_(allowance) + ' per ' + word + '*, refilling ' + periodResetText_() + '. Unused tailwags ' +
-    (cfgBool('CARRY_OVER_UNUSED') ? 'roll forward.' : 'expire — spend them.'));
+    (cfgBool_('CARRY_OVER_UNUSED') ? 'roll forward.' : 'expire — spend them.'));
   if (cap > 0) lines.push('• At most *' + cap + '* to the same person per ' + word + '.');
-  if (!cfgBool('ALLOW_SELF_KUDOS')) lines.push('• No tailwags for yourself.');
+  if (!cfgBool_('ALLOW_SELF_KUDOS')) lines.push('• No tailwags for yourself.');
   lines.push('• Reasons are public and permanent. Write something they would want to read back.');
 
   lines.push('');
   lines.push('*Looking things up*');
-  lines.push('`/wags` — your balance, badges and raffle entries');
+  lines.push('`/wags` — your balance and badges');
+  if (cfgBool_('REWARDS_ENABLED')) lines.push('`/wags rewards` — your tickets and the rewards you can enter');
   lines.push('`/wags leaderboard` · `/wags month` · `/wags all` — the boards');
   lines.push('`/wags given` — who has been most generous');
   lines.push('`/wags @someone` — someone else\'s tailwags');
 
-  if (cfgBool('RAFFLE_ENABLED')) {
+  if (cfgBool_('REWARDS_ENABLED')) {
+    var perR = num_(cfgNum_('TICKETS_PER_WAG_RECEIVED'));
+    var perG = num_(cfgNum_('TICKETS_PER_WAG_GIVEN'));
     lines.push('');
     lines.push('*Rewards*');
-    lines.push('Badges unlock automatically at ' + cfgList('BADGE_THRESHOLDS').join(', ') + ' tailwags received.');
+    lines.push('Every tailwag you receive earns *' + perR + ' ' + (perR === 1 ? 'ticket' : 'tickets') + '*' +
+      (perG > 0 ? ', and every one you give earns *' + perG + '*' : '') + '.');
+    lines.push('Put your tickets into whichever rewards you want on the rewards site — more tickets, better odds. ' +
+      'Tickets in a draw are spent win or lose; you can pull them back out until it closes.');
+    lines.push('`/wags rewards` — your tickets and what is open' +
+      (cfgStr_('REWARDS_PORTAL_URL') ? '  ·  <' + cfgStr_('REWARDS_PORTAL_URL') + '|open the rewards site>' : ''));
+    lines.push('Badges unlock automatically at ' + cfgList_('BADGE_THRESHOLDS').join(', ') + ' tailwags received.');
+  }
+
+  if (cfgBool_('RAFFLE_ENABLED')) {
+    lines.push('');
+    lines.push('*Monthly raffle*');
+    lines.push('Badges unlock automatically at ' + cfgList_('BADGE_THRESHOLDS').join(', ') + ' tailwags received.');
     lines.push('Every tailwag you receive is one entry in the monthly raffle' +
-      (cfgStr('RAFFLE_PRIZE') ? ' for *' + escapeSlack_(cfgStr('RAFFLE_PRIZE')) + '*' : '') + '.');
+      (cfgStr_('RAFFLE_PRIZE') ? ' for *' + escapeSlack_(cfgStr_('RAFFLE_PRIZE')) + '*' : '') + '.');
   }
 
   return { text: 'Tail Wag help', blocks: [headerBlock_('🐕 Tail Wag'), sectionBlock_(lines.join('\n'))] };

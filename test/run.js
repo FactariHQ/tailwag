@@ -921,7 +921,7 @@ test('set changes a known setting and refuses an unknown one', () => {
   const env = freshEnv({ ADMIN_USER_IDS: 'U08JOSH1' });
   const ok = body(slashCommand(env, '/wag-admin', 'set ALLOWANCE_PEER 9'));
   includes(ok.text, 'is now');
-  eq(env.call('cfgNum', 'ALLOWANCE_PEER'), 9);
+  eq(env.call('cfgNum_', 'ALLOWANCE_PEER'), 9);
 
   const bad = body(slashCommand(env, '/wag-admin', 'set NOT_A_SETTING 1'));
   includes(bad.text, 'not a known setting');
@@ -931,7 +931,7 @@ test('set refuses to handle secrets from Slack', () => {
   const env = freshEnv({ ADMIN_USER_IDS: 'U08JOSH1' });
   const b = body(slashCommand(env, '/wag-admin', 'set SLACK_BOT_TOKEN xoxb-leaked'));
   includes(b.text, 'not settable from Slack');
-  eq(env.call('cfgStr', 'SLACK_BOT_TOKEN'), 'xoxb-test', 'the token must be unchanged');
+  eq(env.call('cfgStr_', 'SLACK_BOT_TOKEN'), 'xoxb-test', 'the token must be unchanged');
 });
 
 test('destructive commands require confirmation', () => {
@@ -1080,7 +1080,7 @@ test('setup preserves an edited config value', () => {
   env.setConfigValue('ALLOWANCE_PEER', 11);
   env.call('setupSpreadsheet');
   env.run('cacheDropAll_(); __configCache = null;');
-  eq(env.call('cfgNum', 'ALLOWANCE_PEER'), 11);
+  eq(env.call('cfgNum_', 'ALLOWANCE_PEER'), 11);
 });
 
 test('all seven tabs exist with their declared columns', () => {
@@ -1098,11 +1098,11 @@ test('config booleans accept the things humans type into a spreadsheet', () => {
   const env = freshEnv();
   ['TRUE', 'true', 'yes', 'Y', '1', 'on'].forEach((v) => {
     env.setConfigValue('RAFFLE_ENABLED', v);
-    eq(env.call('cfgBool', 'RAFFLE_ENABLED'), true, `"${v}" should read as true`);
+    eq(env.call('cfgBool_', 'RAFFLE_ENABLED'), true, `"${v}" should read as true`);
   });
   ['FALSE', 'false', 'no', '0', 'off'].forEach((v) => {
     env.setConfigValue('RAFFLE_ENABLED', v);
-    eq(env.call('cfgBool', 'RAFFLE_ENABLED'), false, `"${v}" should read as false`);
+    eq(env.call('cfgBool_', 'RAFFLE_ENABLED'), false, `"${v}" should read as false`);
   });
 });
 
@@ -1177,6 +1177,7 @@ test('the leaderboard web page renders with real data', () => {
 
 test('the leaderboard page refuses a wrong key', () => {
   const env = freshEnv();
+  env.setActiveUser('');   // an anonymous visitor, which is who reaches the Slack deployment
   const out = env.call('doGet', { parameter: { k: 'nope' } });
   includes(out.getContent(), 'needs its key');
 });
@@ -1542,7 +1543,7 @@ test('REG-15 refreshConfigNotes rewrites the notes and leaves the values alone',
 
 test('REG-19 the reason minimum lets a short real reason through', () => {
   const env = freshEnv();
-  eq(env.call('cfgNum', 'MIN_REASON_CHARS'), 6, 'the floor is six characters');
+  eq(env.call('cfgNum_', 'MIN_REASON_CHARS'), 6, 'the floor is six characters');
 
   // The two that were refused in real use on 19 Sep.
   ['doggos!', 'good idea'].forEach((reason) => {
@@ -1634,12 +1635,12 @@ test('REG-23 config is read from the sheet once and then served from cache', () 
     + " readSheet_ = function (n) { if (n === 'Config') __cfgReads++; return __realReadSheet(n); };"
     + " cacheDrop_('config'); __configCache = null;");
 
-  env.call('getConfigAll');
+  env.call('getConfigAll_');
   env.run('__configCache = null;');   // a second execution, same cache
-  env.call('getConfigAll');
+  env.call('getConfigAll_');
   eq(env.run('__cfgReads'), 1, 'the Config tab should be opened once, not once per execution');
 
-  assert(env.call('cfgNum', 'RESPONSE_DEADLINE_MS') > 0, 'the deadline has a value');
+  assert(env.call('cfgNum_', 'RESPONSE_DEADLINE_MS') > 0, 'the deadline has a value');
   assert(env.state.cache['od.v1.config'] !== undefined, 'config should be cached');
 
   // Six hours, the platform maximum. Every writer drops the entry, so the only
@@ -1651,7 +1652,7 @@ test('REG-23 config is read from the sheet once and then served from cache', () 
 
 test('REG-24 editing the Config tab by hand drops the cached copy', () => {
   const env = freshEnv();
-  env.call('getConfigAll');
+  env.call('getConfigAll_');
   assert(env.state.cache['od.v1.config'] !== undefined, 'config starts cached');
 
   // An edit somewhere else leaves it alone.
@@ -1697,7 +1698,7 @@ test('REG-26 warmCaches fills what the command paths read, and only reads', () =
 
 test('REG-27 a hand edit drops what that tab feeds, and nothing else', () => {
   const env = freshEnv();
-  const fill = () => env.run("getConfigAll(); getRoster_(); balanceIndex_(); globalStats_();");
+  const fill = () => env.run("getConfigAll_(); getRoster_(); balanceIndex_(); globalStats_();");
   const edit = (tab) => env.call('onConfigEdit', { range: { getSheet: () => ({ getName: () => tab }) } });
 
   fill();
@@ -1720,6 +1721,687 @@ test('REG-28 a warm interval the platform will not accept snaps to one it will',
 });
 
 // ===========================================================================
+
+// ===========================================================================
+suite('Rewards — earning tickets');
+// ===========================================================================
+
+/** Makes this sandbox the portal build, which is what carries PORTAL_SPREADSHEET_ID. */
+function asPortal(env) { env.run("var PORTAL_SPREADSHEET_ID = 'SHEET_TEST_ID';"); return env; }
+
+function rewardsEnv(overrides = {}) {
+  const env = asPortal(freshEnv(Object.assign({ ADMIN_USER_IDS: 'U08JOSH1' }, overrides)));
+  env.call('syncRosterFromSlack_');
+  env.call('setupRewards');
+  env.setConfigValue('REWARDS_PORTAL_URL', 'https://sites.google.com/actaba.com/rewards');
+  env.clearFetches();
+  return env;
+}
+function wallet(env, id) { env.run('rewardsCacheDrop_()'); return env.call('walletFor_', id); }
+function later(env, ms) { env.setNow(new Date(env.state.nowValue.getTime() + ms)); }
+function makePod(env, extra = {}) {
+  const now = env.state.nowValue.getTime();
+  const res = env.call('savePod_', Object.assign({
+    title: 'Extra PTO day', description: 'One paid day off', prize_value: '1 day PTO',
+    closes_ts: new Date(now + 3 * 86400000).toISOString(), publish: true
+  }, extra), 'josh@actaba.com');
+  assert(res.ok, 'pod should save: ' + JSON.stringify(res));
+  env.run('rewardsCacheDrop_()');
+  return res.pod_id;
+}
+const HOUR = 3600000;
+
+test('setupRewards stamps the launch, retires the raffle and installs the 15-minute job', () => {
+  const env = asPortal(freshEnv());
+  eq(env.call('cfgBool_', 'RAFFLE_ENABLED'), true, 'raffle starts on');
+  eq(env.call('cfgBool_', 'REWARDS_ENABLED'), false, 'rewards start off');
+  const out = env.call('setupRewards');
+  includes(out, 'Launch stamped');
+  includes(out, 'Retired the automatic monthly raffle');
+  eq(env.call('cfgBool_', 'RAFFLE_ENABLED'), false);
+  eq(env.call('cfgBool_', 'REWARDS_ENABLED'), true);
+  assert(env.call('cfgStr_', 'REWARDS_LAUNCH_TS'), 'launch should be set');
+  eq(env.call('cfgStr_', 'REWARDS_JOB_SCRIPT_ID'), 'SCRIPT_TEST_ID');
+  const jobs = env.sandbox.ScriptApp.getProjectTriggers().filter((t) => t.getHandlerFunction() === 'rewardsJob');
+  eq(jobs.length, 1);
+  env.call('setupRewards');   // idempotent
+  eq(env.sandbox.ScriptApp.getProjectTriggers().filter((t) => t.getHandlerFunction() === 'rewardsJob').length, 1);
+  assert(['Pods', 'Tickets', 'Winners'].every((n) => env.state.spreadsheet.getSheetByName(n)), 'rewards tabs exist');
+});
+
+test('fresh start: tailwags given before launch earn no tickets, ones after do', () => {
+  const env = asPortal(freshEnv({ ADMIN_USER_IDS: 'U08JOSH1' }));
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  later(env, HOUR);
+  env.call('setupRewards');
+  eq(wallet(env, 'U08SAM01').available, 0, 'the pre-launch tailwag must not count');
+  later(env, HOUR);
+  slashCommand(env, '/wag', '<@U08DANA1> x2 ran the whole parent training alone');
+  eq(wallet(env, 'U08SAM01').available, 0, 'still nothing for the pre-launch one');
+  const w = wallet(env, 'U08DANA1');
+  eq(w.available, 2);
+  eq(w.pending, 2, 'not yet credited, but already visible');
+});
+
+test('accrual credits once, moves the cursor, and never double-credits', () => {
+  const env = rewardsEnv();
+  later(env, HOUR);
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  slashCommand(env, '/wag', '<@U08DANA1> fixed the auth mess for Denver', { user_id: 'U08SAM01', user_name: 'sam' });
+  eq(env.call('withLock_', () => 0), 0);
+  eq(env.run('withLock_(function(){ return accrueTickets_(); })'), 2);
+  eq(env.run('withLock_(function(){ return accrueTickets_(); })'), 0, 'second run has nothing to do');
+  const rows = env.sheetRows('Tickets');
+  eq(rows.length, 2);
+  assert(rows.every((r) => /^recv:/.test(String(r.ref))), 'refs mark the source ledger row');
+  const w = wallet(env, 'U08SAM01');
+  eq(w.available, 1); eq(w.pending, 0); eq(w.earned, 1);
+  assert(/^\d+\|/.test(env.call('cfgStr_', 'REWARDS_ACCRUAL_CURSOR')), 'cursor is row|id');
+});
+
+test('earn-rate changes are forward-only', () => {
+  const env = rewardsEnv();
+  later(env, HOUR);
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  env.setActiveUser('josh@actaba.com');
+  env.call('portalAdminSettings', { perReceived: 3 });
+  eq(wallet(env, 'U08SAM01').available, 1, 'the tailwag before the change keeps the old rate');
+  slashCommand(env, '/wag', '<@U08SAM01> and again on Thursday, legend');
+  eq(wallet(env, 'U08SAM01').available, 4);
+});
+
+test('giving can earn tickets when configured, but admin grants never pay the admin', () => {
+  const env = rewardsEnv({ TICKETS_PER_WAG_GIVEN: 0.5 });
+  later(env, HOUR);
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  slashCommand(env, '/wag-admin', 'grant <@U08DANA1> 3 anniversary');
+  const josh = wallet(env, 'U08JOSH1');
+  eq(josh.available, 0.5);
+  eq(josh.spendable, 0, 'half a ticket cannot be entered yet');
+  eq(wallet(env, 'U08DANA1').available, 3, 'an admin-granted tailwag still earns the receiver tickets');
+});
+
+test('a Ledger row deleted by hand does not cause double credit', () => {
+  const env = rewardsEnv();
+  later(env, HOUR);
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  slashCommand(env, '/wag', '<@U08DANA1> fixed the auth mess for Denver');
+  env.run('withLock_(function(){ return accrueTickets_(); })');
+  // Someone deletes the first ledger row, shifting the cursor row.
+  const led = env.state.spreadsheet.getSheetByName('Ledger');
+  led.data.splice(1, 1);
+  env.run('cacheDropAll_()');
+  slashCommand(env, '/wag', '<@U08LEE01> great session notes all week');
+  env.run('withLock_(function(){ return accrueTickets_(); })');
+  eq(wallet(env, 'U08SAM01').available, 1);
+  eq(wallet(env, 'U08DANA1').available, 1);
+  eq(wallet(env, 'U08LEE01').available, 1);
+});
+
+// ===========================================================================
+suite('Rewards — pods and entering');
+// ===========================================================================
+
+function earn(env, id, n) {
+  env.call('withLock_', () => 0);
+  env.run(`withLock_(function(){ accrueTickets_(); appendTicketRows_([{user_id:'${id}', name:'${id}', delta:${n}, kind:'grant', note:'test', actor:'t'}]); })`);
+  env.run('rewardsCacheDrop_()');
+}
+
+test('entering and withdrawing move tickets between the wallet and the pod', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 5);
+  let r = env.call('setAllocation_', 'U08SAM01', 'sam', pod, 3);
+  assert(r.ok, JSON.stringify(r));
+  eq(r.inPod, 3); eq(r.available, 2);
+  r = env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1);
+  eq(r.inPod, 1); eq(r.available, 4);
+  const w = wallet(env, 'U08SAM01');
+  eq(w.inPlay, 1);
+  const kinds = env.sheetRows('Tickets').map((x) => String(x.kind));
+  assert(kinds.indexOf('enter') !== -1 && kinds.indexOf('withdraw') !== -1, 'both movements are on the ledger');
+});
+
+test('cannot enter more tickets than you have, or over the per-person cap', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env, { max_tickets_per_person: 4 });
+  earn(env, 'U08SAM01', 6);
+  let r = env.call('setAllocation_', 'U08SAM01', 'sam', pod, 7);
+  eq(r.ok, false); includes(r.error, 'at most 4');
+  r = env.call('setAllocation_', 'U08SAM01', 'sam', pod, 4);
+  eq(r.ok, true);
+  const pod2 = makePod(env, { title: 'Lunch with the CEO' });
+  r = env.call('setAllocation_', 'U08SAM01', 'sam', pod2, 3);
+  eq(r.ok, false); includes(r.error, '2 tickets available');
+  r = env.call('setAllocation_', 'U08SAM01', 'sam', pod2, -1);
+  eq(r.ok, false);
+});
+
+test('pods refuse tickets before they open and after they close', () => {
+  const env = rewardsEnv();
+  const now = env.state.nowValue.getTime();
+  const pod = makePod(env, { opens_ts: new Date(now + 2 * HOUR).toISOString() });
+  earn(env, 'U08SAM01', 3);
+  let r = env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1);
+  eq(r.ok, false); includes(r.error, 'opens');
+  later(env, 3 * HOUR);
+  r = env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1);
+  eq(r.ok, true);
+  later(env, 4 * 86400000);
+  r = env.call('setAllocation_', 'U08SAM01', 'sam', pod, 0);
+  eq(r.ok, false, 'no withdrawing after close either'); includes(r.error, 'closed');
+});
+
+test('drafts are invisible to staff and cannot take tickets', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env, { publish: false });
+  earn(env, 'U08SAM01', 3);
+  const r = env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1);
+  eq(r.ok, false);
+  env.setActiveUser('sam@actaba.com');
+  const st = env.call('portalLoad');
+  eq(st.pods.length, 0);
+});
+
+test('savePod_ validates and keeps hostile input inert', () => {
+  const env = rewardsEnv();
+  const now = env.state.nowValue.getTime();
+  eq(env.call('savePod_', { title: '', closes_ts: new Date(now + HOUR).toISOString() }, 'a').ok, false);
+  eq(env.call('savePod_', { title: 'x', closes_ts: '' }, 'a').ok, false);
+  eq(env.call('savePod_', { title: 'x', opens_ts: new Date(now + 2 * HOUR).toISOString(), closes_ts: new Date(now + HOUR).toISOString() }, 'a').ok, false);
+  const id = makePod(env, { title: '=IMPORTDATA("https://evil")', image_url: 'javascript:alert(1)' });
+  eq(env.formulaCells('Pods').length, 0, 'a title must never become a live formula');
+  const pod = env.call('podById_', id);
+  eq(pod.image_url, '', 'only https image links are kept');
+  eq(pod.title, '=IMPORTDATA("https://evil")');
+});
+
+test('lowering a live pod\'s cap below what someone has in is refused', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 5);
+  env.call('setAllocation_', 'U08SAM01', 'sam', pod, 5);
+  const p = env.call('podById_', pod);
+  const r = env.call('savePod_', Object.assign({}, p, { max_tickets_per_person: 3 }), 'a');
+  eq(r.ok, false); includes(r.error, 'more than 3');
+});
+
+// ===========================================================================
+suite('Rewards — drawing');
+// ===========================================================================
+
+test('a draw is weighted by tickets, spends every ticket, and is announced', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 1); earn(env, 'U08DANA1', 9);
+  env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1);
+  env.call('setAllocation_', 'U08DANA1', 'dana', pod, 9);
+  later(env, 4 * 86400000);
+  env.clearFetches();
+  env.setRandom([0.05]);          // 0.05 × 10 = 0.5 → inside sam's single ticket
+  const r = env.call('drawPod_', pod, 'system', false);
+  assert(r.ok, JSON.stringify(r));
+  eq(r.winners.length, 1); eq(r.winners[0].user_id, 'U08SAM01');
+  const win = env.sheetRows('Winners');
+  eq(win.length, 1); eq(env.call('num_', win[0].tickets_in), 1); eq(env.call('num_', win[0].pod_total_tickets), 10);
+  eq(wallet(env, 'U08SAM01').spent, 1);
+  eq(wallet(env, 'U08DANA1').available, 0, 'losers\' tickets are spent too');
+  eq(wallet(env, 'U08DANA1').spent, 9);
+  const post = env.fetchesTo('chat.postMessage').find((f) => f.payload.channel === 'C_KUDOS');
+  assert(post, 'announced in the kudos channel');
+  includes(JSON.stringify(post.payload.blocks), '=========================================================');
+  includes(JSON.stringify(post.payload.blocks), '<@U08SAM01>');
+  assert(env.fetchesTo('chat.postMessage').some((f) => f.payload.channel === 'U08SAM01'), 'winner is DMed');
+  eq(env.call('drawPod_', pod, 'system', false).ok, false, 'a pod draws once');
+});
+
+test('the heavier entrant wins when the roll lands in their range', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 1); earn(env, 'U08DANA1', 9);
+  env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1);
+  env.call('setAllocation_', 'U08DANA1', 'dana', pod, 9);
+  env.setRandom([0.5]);
+  const r = env.call('drawPod_', pod, 'josh@actaba.com', true);
+  eq(r.winners[0].user_id, 'U08DANA1');
+});
+
+test('multi-winner pods never pick the same person twice', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env, { winners_count: 3 });
+  ['U08SAM01', 'U08DANA1', 'U08LEE01'].forEach((u, i) => { earn(env, u, 5); env.call('setAllocation_', u, u, pod, i + 1); });
+  env.setRandom([0.99, 0.99, 0.99]);
+  const r = env.call('drawPod_', pod, 'a', true);
+  eq(r.winners.length, 3);
+  eq(new Set(r.winners.map((w) => w.user_id)).size, 3);
+  eq(env.sheetRows('Winners').map((w) => env.call('num_', w.place)).join(','), '1,2,3');
+});
+
+test('a pod nobody entered draws with no winner and says so', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  const r = env.call('drawPod_', pod, 'a', true);
+  eq(r.ok, true); eq(r.winners.length, 0);
+  includes(r.message, 'Nobody entered');
+  eq(env.call('podById_', pod).status, 'drawn');
+});
+
+test('cancelling a pod refunds everyone', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 4);
+  env.call('setAllocation_', 'U08SAM01', 'sam', pod, 4);
+  eq(wallet(env, 'U08SAM01').available, 0);
+  const r = env.call('cancelPod_', pod, 'josh', 'prize fell through');
+  assert(r.ok, JSON.stringify(r));
+  const w = wallet(env, 'U08SAM01');
+  eq(w.available, 4); eq(w.inPlay, 0); eq(w.refunded, 4);
+  eq(env.call('cancelPod_', pod, 'josh', '').ok, false);
+});
+
+test('recent winners can be made to sit out, with their tickets refunded', () => {
+  const env = rewardsEnv({ REWARDS_EXCLUDE_RECENT_WINNERS_DAYS: 30 });
+  const a = makePod(env);
+  const b = makePod(env, { title: 'Second prize' });
+  earn(env, 'U08SAM01', 10); earn(env, 'U08DANA1', 1);
+  env.call('setAllocation_', 'U08SAM01', 'sam', a, 5);
+  env.call('setAllocation_', 'U08SAM01', 'sam', b, 5);
+  env.call('setAllocation_', 'U08DANA1', 'dana', b, 1);
+  env.call('drawPod_', a, 'x', true);           // sam is the only entrant → wins
+  const r = env.call('drawPod_', b, 'x', true);
+  eq(r.winners[0].user_id, 'U08DANA1');
+  eq(wallet(env, 'U08SAM01').available, 5, 'sam\'s 5 in pod b come back');
+});
+
+test('rewardsJob announces an open pod once, reminds once, draws once', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 2);
+  env.call('setAllocation_', 'U08SAM01', 'sam', pod, 2);
+  env.clearFetches();
+  env.call('rewardsJob');
+  env.call('rewardsJob');
+  const opens = env.fetchesTo('chat.postMessage').filter((f) => /New reward/.test(f.payload.text));
+  eq(opens.length, 1, 'announced exactly once');
+  later(env, 2.5 * 86400000);
+  env.call('rewardsJob'); env.call('rewardsJob');
+  eq(env.fetchesTo('chat.postMessage').filter((f) => /draws soon/.test(f.payload.text)).length, 1, 'one 24h reminder');
+  later(env, 1 * 86400000);
+  env.call('rewardsJob'); env.call('rewardsJob');
+  eq(env.sheetRows('Winners').length, 1, 'drawn exactly once');
+  eq(env.call('podById_', pod).status, 'drawn');
+});
+
+test('rewardsJob stands down in a project that does not own the schedule', () => {
+  const env = rewardsEnv();
+  env.setConfigValue('REWARDS_JOB_SCRIPT_ID', 'SOME_OTHER_PROJECT');
+  includes(env.call('rewardsJob'), 'another project');
+  let threw = '';
+  try { env.call('setupRewards'); } catch (e) { threw = e.message; }
+  includes(threw, 'already runs Tail Wag Rewards', 'a second project cannot silently take over');
+});
+
+// ===========================================================================
+suite('Rewards — the portal');
+// ===========================================================================
+
+test('the portal knows who you are from your Google email', () => {
+  const env = rewardsEnv();
+  later(env, HOUR);
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  env.setActiveUser('SAM@actaba.com');
+  const st = env.call('portalLoad');
+  eq(st.me.userId, 'U08SAM01');
+  eq(st.me.isAdmin, false);
+  eq(st.wallet.available, 1);
+  eq(st.received.length, 1);
+  includes(st.received[0].reason, 'covered two sessions');
+  eq(st.history.length, 1);
+  eq(st.history[0].pending, true);
+});
+
+test('a Google login that differs from the Slack email is linked through google_email', () => {
+  const env = rewardsEnv();
+  const roster = env.state.spreadsheet.getSheetByName('Roster');
+  const head = roster.getDataRange().getValues()[0].map(String);
+  const col = head.indexOf('google_email') + 1;
+  assert(col > 0, 'setup adds the google_email column');
+  const rows = roster.getDataRange().getValues();
+  const r = rows.findIndex((x) => String(x[0]) === 'U08JOSH1') + 1;
+  roster.getRange(r, col, 1, 1).setValues([['josh.google@actaba.com']]);
+  env.run("cacheDrop_('roster')");
+  env.setActiveUser('josh.google@actaba.com');
+  eq(env.call('portalLoad').me.userId, 'U08JOSH1');
+  env.call('syncRosterFromSlack_');
+  env.run("cacheDrop_('roster'); cacheDrop_('portal.who.josh.google@actaba.com')");
+  eq(env.call('portalLoad').me.userId, 'U08JOSH1', 'the link survives a roster sync');
+});
+
+test('an admin can link a Google login to a Slack person from the portal', () => {
+  const env = rewardsEnv();
+  env.setActiveUser('josh@actaba.com');
+  const r = env.call('portalAdminLinkEmail', 'U08SAM01', 'Sam.Google@ACTABA.com');
+  assert(r.ok, JSON.stringify(r));
+  eq(r.admin.people.find((p) => p.user_id === 'U08SAM01').google_email, 'sam.google@actaba.com');
+  eq(env.call('portalAdminLinkEmail', 'U08DANA1', 'sam.google@actaba.com').ok, false, 'one login, one person');
+  eq(env.call('portalAdminLinkEmail', 'U08DANA1', 'not an email').ok, false);
+  env.setActiveUser('sam.google@actaba.com');
+  eq(env.call('portalLoad').me.userId, 'U08SAM01');
+  let threw = '';
+  try { env.call('portalAdminLinkEmail', 'U08SAM01', 'x@y.com'); } catch (e) { threw = e.message; }
+  includes(threw, 'admin-only');
+});
+
+test('someone missing from the roster is found through Slack by email', () => {
+  const env = rewardsEnv();
+  env.addUser('U08NEW01', 'newbie');
+  env.setActiveUser('newbie@actaba.com');
+  const st = env.call('portalLoad');
+  eq(st.me.userId, 'U08NEW01');
+  assert(env.call('getRoster_')['U08NEW01'], 'and added to the roster');
+});
+
+test('anonymous and unknown viewers are turned away politely', () => {
+  const env = rewardsEnv();
+  env.setActiveUser('');
+  let threw = '';
+  try { env.call('portalLoad'); } catch (e) { threw = e.message; }
+  includes(threw, 'Sign in');
+  env.setActiveUser('stranger@gmail.com');
+  threw = '';
+  try { env.call('portalLoad'); } catch (e) { threw = e.message; }
+  includes(threw, 'could not find a Slack account');
+});
+
+test('doGet serves the portal to a signed-in person and a sign-in page to anyone else', () => {
+  const env = rewardsEnv();
+  env.setActiveUser('sam@actaba.com');
+  const out = env.call('doGet', { parameter: {} });
+  includes(out.getContent(), 'data-template="Portal"');
+  env.setActiveUser('');
+  const anon = env.call('doGet', { parameter: {} });
+  includes(anon.getContent(), 'sites.google.com/actaba.com/rewards');
+  const keyed = env.call('doGet', { parameter: { k: 'secret123' } });
+  includes(keyed.getContent(), 'data-template="Leaderboard"');
+});
+
+test('portalSetAllocation acts for the signed-in person only', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 3);
+  env.setActiveUser('sam@actaba.com');
+  const r = env.call('portalSetAllocation', pod, 2);
+  assert(r.ok, JSON.stringify(r));
+  eq(r.state.wallet.spendable, 1);
+  const p = r.state.pods.find((x) => x.pod_id === pod);
+  eq(p.mine, 2); eq(p.total, 2); eq(p.entrants, 1);
+  eq(p.others.length, 0);
+});
+
+test('admin functions refuse non-admins and work for admins', () => {
+  const env = rewardsEnv();
+  env.setActiveUser('sam@actaba.com');
+  let threw = '';
+  try { env.call('portalAdminLoad'); } catch (e) { threw = e.message; }
+  includes(threw, 'admin-only');
+  threw = '';
+  try { env.call('portalAdminGrant', ['U08SAM01'], 100, 'free money'); } catch (e) { threw = e.message; }
+  includes(threw, 'admin-only');
+
+  env.setActiveUser('josh@actaba.com');     // U08JOSH1 is in ADMIN_USER_IDS
+  const a = env.call('portalAdminLoad');
+  assert(a.people.length >= 4, 'everyone on the roster is listed');
+  const g = env.call('portalAdminGrant', ['U08SAM01', 'U08DANA1'], 2, 'Welcome bonus');
+  assert(g.ok, JSON.stringify(g));
+  eq(wallet(env, 'U08DANA1').granted, 2);
+  const neg = env.call('portalAdminGrant', ['U08SAM01'], -5, 'oops');
+  eq(neg.ok, false, 'cannot push anyone below zero');
+
+  env.setConfigValue('REWARDS_ADMIN_EMAILS', 'lindsey@actaba.com');
+  env.addUser('U08LIND1', 'lindsey');
+  env.setActiveUser('lindsey@actaba.com');
+  assert(env.call('portalAdminLoad').pods, 'an email-listed admin gets in too');
+});
+
+test('an email-listed admin with no Slack account still gets the Admin tab, but no wallet', () => {
+  const env = rewardsEnv({ REWARDS_ADMIN_EMAILS: 'robots@actaba.com' });
+  env.setActiveUser('robots@actaba.com');
+  const st = env.call('portalLoad');
+  eq(st.me.userId, ''); eq(st.me.isAdmin, true);
+  eq(st.wallet.available, 0);
+  assert(env.call('portalAdminLoad').people.length >= 4);
+  const pod = makePod(env);
+  eq(env.call('portalSetAllocation', pod, 1).ok, false);
+});
+
+test('admin can create, publish, draw and mark a prize delivered from the portal', () => {
+  const env = rewardsEnv();
+  env.setActiveUser('josh@actaba.com');
+  const now = env.state.nowValue.getTime();
+  let r = env.call('portalAdminSavePod', { title: 'Coffee on us', closes_ts: new Date(now + 86400000).toISOString(), emoji: '☕' });
+  assert(r.ok, JSON.stringify(r));
+  const id = r.pod_id;
+  eq(r.admin.pods.find((p) => p.pod_id === id).status, 'draft');
+  r = env.call('portalAdminPublish', id);
+  assert(r.ok, JSON.stringify(r));
+  earn(env, 'U08SAM01', 2);
+  env.call('setAllocation_', 'U08SAM01', 'sam', id, 2);
+  r = env.call('portalAdminDraw', id);
+  assert(r.ok, JSON.stringify(r));
+  r = env.call('portalAdminFulfill', id, 'U08SAM01', true);
+  assert(r.ok, JSON.stringify(r));
+  eq(r.admin.winners[0].fulfilled, true);
+});
+
+// ===========================================================================
+suite('Rewards — Slack side and security');
+// ===========================================================================
+
+test('/wags rewards shows tickets, open pods and a link to the site', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env, { title: 'Team lunch' });
+  earn(env, 'U08JOSH1', 4);
+  env.call('setAllocation_', 'U08JOSH1', 'josh', pod, 1);
+  const b = body(slashCommand(env, '/wags', 'rewards'));
+  const s = JSON.stringify(b.blocks);
+  includes(s, '3 tickets');
+  includes(s, 'Team lunch');
+  includes(s, 'you: 1');
+  includes(s, 'sites.google.com/actaba.com/rewards');
+  eq(body(slashCommand(env, '/wags', 'tickets')).text, 'Your rewards');
+});
+
+test('App Home and help both carry the rewards', () => {
+  const env = rewardsEnv();
+  makePod(env, { title: 'Team lunch' });
+  const view = env.call('buildHomeView_', 'U08JOSH1');
+  includes(JSON.stringify(view.blocks), 'Team lunch');
+  const help = env.call('buildHelpCard_', 'U08JOSH1');
+  includes(JSON.stringify(help.blocks), '/wags rewards');
+  assert(JSON.stringify(help.blocks).indexOf('monthly raffle') === -1, 'the retired raffle is not advertised');
+});
+
+test('the recipient DM says how many tickets a tailwag just earned', () => {
+  const env = rewardsEnv();
+  env.clearFetches();
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  const dm = env.fetchesTo('chat.postMessage').find((f) => f.payload.channel === 'U08SAM01');
+  assert(dm, 'recipient is DMed');
+  includes(JSON.stringify(dm.payload.blocks), '+1 ticket');
+});
+
+test('SEC editor-only functions refuse web callers (google.script.run exposure)', () => {
+  const env = rewardsEnv();
+  ['setupSpreadsheet', 'setupRewards', 'installTriggers', 'installRewardsTriggers', 'selfTest',
+    'seedDemoData', 'clearDemoData', 'refreshConfigNotes', 'showRequestUrl', 'removeTriggers'].forEach((fn) => {
+    [['', 'anonymous'], ['sam@actaba.com', 'a staff member']].forEach(([who, label]) => {
+      env.setActiveUser(who);
+      let threw = '';
+      try { env.call(fn); } catch (e) { threw = e.message; }
+      includes(threw, 'script owner', `${fn} must refuse ${label}`);
+    });
+  });
+  env.setActiveUser('robots@actaba.com');
+  includes(env.call('refreshConfigNotes'), 'Refreshed', 'the owner in the editor still can');
+});
+
+test('SEC config accessors are private, so the bot token cannot be read from a page', () => {
+  const env = rewardsEnv();
+  ['getConfigAll', 'cfg', 'cfgStr', 'setConfig'].forEach((fn) => {
+    eq(typeof env.sandbox[fn], 'undefined', `${fn} must not be a public function`);
+  });
+});
+
+
+test('SEC before setupRewards nothing earns, even if someone calls the job from a page', () => {
+  const env = asPortal(freshEnv({ ADMIN_USER_IDS: 'U08JOSH1' }));
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  env.setActiveUser('');
+  let threw = '';
+  try { env.call('rewardsJob'); } catch (e) { threw = e.message; }
+  includes(threw, 'script owner', 'an anonymous page cannot run the job');
+  env.setActiveUser('robots@actaba.com');
+  env.call('rewardsJob');
+  eq(wallet(env, 'U08SAM01').available, 0, 'no launch time means rewards are not set up, not "count everything"');
+  env.setConfigValue('REWARDS_ENABLED', true);
+  eq(wallet(env, 'U08SAM01').available, 0, 'still nothing without a launch time');
+  env.call('setupRewards');
+  eq(wallet(env, 'U08SAM01').available, 0, 'history stays uncredited after setup');
+});
+
+test('SEC the scheduled job runs from its own trigger without an owner session', () => {
+  const env = rewardsEnv();
+  const trig = env.sandbox.ScriptApp.getProjectTriggers().find((t) => t.getHandlerFunction() === 'rewardsJob');
+  env.setActiveUser('');
+  const out = env.call('rewardsJob', { triggerUid: trig.getUniqueId() });
+  assert(typeof out === 'string' && out.indexOf('owner') === -1, 'a real trigger run is allowed: ' + out);
+  let threw = '';
+  try { env.call('rewardsJob', { triggerUid: 'guessed' }); } catch (e) { threw = e.message; }
+  includes(threw, 'script owner', 'a forged trigger id is refused');
+});
+
+test('SEC the Slack project cannot write rewards, serve the portal, or run setupRewards', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 3);
+  env.state.scriptId = 'THE_SLACK_PROJECT';
+  eq(env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1).ok, false);
+  eq(env.call('drawPod_', pod, 'x', true).ok, false);
+  eq(env.call('grantTickets_', ['U08SAM01'], 5, 'nope', 'x').ok, false);
+  eq(env.run('withLock_(function(){ return accrueTickets_(); })'), 0);
+  env.setActiveUser('sam@actaba.com');
+  let threw = '';
+  try { env.call('portalLoad'); } catch (e) { threw = e.message; }
+  includes(threw, 'intranet');
+  includes(env.call('doGet', { parameter: {} }).getContent(), 'needs its key');
+  // And the Slack project, which has no PORTAL_SPREADSHEET_ID, refuses setup outright.
+  const slack = freshEnv();
+  let t2 = '';
+  try { slack.call('setupRewards'); } catch (e) { t2 = e.message; }
+  includes(t2, 'not the Slack project');
+  // Reading from Slack still works.
+  includes(JSON.stringify(body(slashCommand(env, '/wags', 'rewards')).blocks), 'ready to enter');
+});
+
+test('once people have entered, the draw cannot be pulled earlier or the pod reclosed', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 3);
+  env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1);
+  const p = env.call('podById_', pod);
+  const now = env.state.nowValue.getTime();
+  let r = env.call('savePod_', Object.assign({}, p, { closes_ts: new Date(now + HOUR).toISOString() }), 'a');
+  eq(r.ok, false); includes(r.error, 'only move later');
+  r = env.call('savePod_', Object.assign({}, p, { opens_ts: new Date(now + HOUR).toISOString() }), 'a');
+  eq(r.ok, false);
+  r = env.call('savePod_', Object.assign({}, p, { closes_ts: new Date(now + 9 * 86400000).toISOString() }), 'a');
+  eq(r.ok, true, 'extending is fine');
+  r = env.call('savePod_', { title: 'Past', closes_ts: new Date(now - HOUR).toISOString(), publish: true }, 'a');
+  eq(r.ok, false, 'cannot publish something already closed');
+});
+
+test('the job and a portal action racing never credit a tailwag twice', () => {
+  const env = rewardsEnv();
+  const pod = makePod(env);
+  earn(env, 'U08SAM01', 2);
+  env.call('setAllocation_', 'U08SAM01', 'sam', pod, 1);
+  later(env, 4 * 86400000);
+  slashCommand(env, '/wag', '<@U08SAM01> covered two sessions at no notice');
+  // Warm the job's view of the world, then let a portal write land before the draw.
+  env.run('rewardsCacheDrop_(); podTotals_(); pendingCredits_();');
+  env.run('withLock_(function(){ accrueTickets_(); })');
+  env.call('drawPod_', pod, 'system', false);
+  const refs = env.sheetRows('Tickets').map((r) => String(r.ref)).filter((r) => /^recv:/.test(r));
+  eq(refs.length, new Set(refs).size, 'every ref is unique');
+});
+
+test('SEC dailyJob accepts its own trigger and refuses page callers', () => {
+  const env = rewardsEnv();
+  env.call('installTriggers');
+  const trig = env.sandbox.ScriptApp.getProjectTriggers().find((t) => t.getHandlerFunction() === 'dailyJob');
+  env.setActiveUser('sam@actaba.com');
+  let threw = '';
+  try { env.call('dailyJob'); } catch (e) { threw = e.message; }
+  includes(threw, 'script owner');
+  env.call('dailyJob', { triggerUid: trig.getUniqueId() });
+});
+
+test('a portal settings change tells the Slack project to drop its cached config', () => {
+  const env = rewardsEnv({ SLACK_APP_URL: 'https://script.google.com/macros/s/SLACKAPP/exec' });
+  env.setActiveUser('josh@actaba.com');
+  env.clearFetches();
+  env.call('portalAdminSettings', { perGiven: 1 });
+  const ping = env.state.fetches.find((f) => String(f.url).indexOf('SLACKAPP/exec?k=secret123') !== -1);
+  assert(ping, 'the Slack project is pinged with its secret');
+  // And on the Slack side, that ping (with the secret) drops the cache.
+  env.state.cache['od.v1.config'] = JSON.stringify({ TICKETS_PER_WAG_GIVEN: 0 });
+  const out = env.call('doPost', { parameter: { k: 'secret123' }, postData: { type: 'application/json', contents: JSON.stringify({ type: 'tailwag_cache_drop', team_id: 'T_TEST' }) } });
+  eq(out.getContent(), 'dropped');
+  eq(env.state.cache['od.v1.config'], undefined);
+  const bad = env.call('doPost', { parameter: { k: 'nope' }, postData: { type: 'application/json', contents: JSON.stringify({ type: 'tailwag_cache_drop' }) } });
+  eq(bad.getContent(), 'unauthorized');
+});
+
+test('selfTestRewards proves the write path and leaves no trace', () => {
+  const env = rewardsEnv({ SLACK_APP_URL: 'https://script.google.com/macros/s/SLACKAPP/exec', REWARDS_ADMIN_EMAILS: 'josh@actaba.com' });
+  env.call('installRewardsTriggers');
+  const out = env.call('selfTestRewards');
+  includes(out, 'Created, read back and cancelled a draft pod');
+  includes(out, 'Removed the test pod row');
+  eq(env.sheetRows('Pods').length, 0, 'no test pod left behind');
+  includes(out, 'Admin josh@actaba.com: Slack member U08JOSH1');
+  env.setActiveUser('sam@actaba.com');
+  let threw = '';
+  try { env.call('selfTestRewards'); } catch (e) { threw = e.message; }
+  includes(threw, 'script owner');
+});
+
+test('SEC dailyJob runs at most once a day however often it is called', () => {
+  const env = rewardsEnv({ WEEKLY_DIGEST_ENABLED: true });
+  env.call('dailyJob');
+  includes(env.call('dailyJob'), 'Already ran today');
+});
+
+
+test('the portal build ships the same code with a domain-only manifest and the shared sheet id', () => {
+  const cp = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const root = path.join(__dirname, '..');
+  cp.execFileSync('node', [path.join(root, 'scripts', 'build-portal.js')], {
+    env: Object.assign({}, process.env, { TAILWAG_SPREADSHEET_ID: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789' }), stdio: 'pipe'
+  });
+  const out = path.join(root, 'dist', 'portal');
+  const m = JSON.parse(fs.readFileSync(path.join(out, 'appsscript.json'), 'utf8'));
+  eq(m.webapp.access, 'DOMAIN');
+  eq(m.webapp.executeAs, 'USER_DEPLOYING');
+  assert(m.oauthScopes.indexOf('https://www.googleapis.com/auth/userinfo.email') !== -1, 'needs the email scope');
+  const slack = JSON.parse(fs.readFileSync(path.join(root, 'src', 'appsscript.json'), 'utf8'));
+  eq(slack.webapp.access, 'ANYONE_ANONYMOUS', 'the Slack project must stay reachable by Slack');
+  includes(fs.readFileSync(path.join(out, '00a_Portal.gs'), 'utf8'), '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789');
+  fs.readdirSync(path.join(root, 'src')).forEach((f) => assert(fs.existsSync(path.join(out, f)), f + ' missing from the portal build'));
+});
 
 console.log(`\n${'─'.repeat(60)}`);
 if (failed === 0) {

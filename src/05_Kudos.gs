@@ -69,7 +69,7 @@ function parseGive_(text) {
   }
 
   // Otherwise, repeated trigger emoji set the count.
-  var trigger = cfgStr('EMOJI_TRIGGER') || 'jackson';
+  var trigger = cfgStr_('EMOJI_TRIGGER') || 'jackson';
   var emojiRe = new RegExp(':' + trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':', 'g');
   var emojiMatches = rest.match(emojiRe);
   if (!explicitCount && emojiMatches && emojiMatches.length > 1) {
@@ -86,7 +86,7 @@ function parseGive_(text) {
   // Company value tag: #real-world, #collab, …
   var value = null;
   var unknownTags = [];
-  if (cfgBool('VALUES_ENABLED')) {
+  if (cfgBool_('VALUES_ENABLED')) {
     var tagMatches = [];
     RE_VALUE_TAG.lastIndex = 0;
     while ((m = RE_VALUE_TAG.exec(rest)) !== null) tagMatches.push(m[1]);
@@ -128,7 +128,7 @@ function parseGive_(text) {
  * @return {{ok:boolean, message:string}}
  */
 function validateGive_(parsed, giverId) {
-  if (cfgBool('PAUSED')) {
+  if (cfgBool_('PAUSED')) {
     return { ok: false, message: 'Tail Wag is paused right now. Nothing is being counted — try again once it is switched back on.' };
   }
   if (parsed.broadcasts.length) {
@@ -143,21 +143,21 @@ function validateGive_(parsed, giverId) {
     }
     return { ok: false, message: 'Tag at least one person. Try `/wag @someone why they earned it`.' };
   }
-  var maxRecipients = cfgNum('MAX_RECIPIENTS_PER_MESSAGE');
+  var maxRecipients = cfgNum_('MAX_RECIPIENTS_PER_MESSAGE');
   if (maxRecipients > 0 && parsed.userIds.length > maxRecipients) {
     return { ok: false, message: 'That is ' + parsed.userIds.length + ' people in one go — the limit is ' + maxRecipients + '. Split it up.' };
   }
-  if (!cfgBool('ALLOW_SELF_KUDOS') && parsed.userIds.length === 1 && parsed.userIds[0] === giverId) {
+  if (!cfgBool_('ALLOW_SELF_KUDOS') && parsed.userIds.length === 1 && parsed.userIds[0] === giverId) {
     return { ok: false, message: 'No tailwags for yourself. Nice try though.' };
   }
-  if (cfgBool('VALUES_ENABLED') && cfgBool('VALUE_REQUIRED') && !parsed.value) {
-    var tagHelp = valueList().map(function (v) { return '`#' + v.tag + '`'; }).join('  ');
+  if (cfgBool_('VALUES_ENABLED') && cfgBool_('VALUE_REQUIRED') && !parsed.value) {
+    var tagHelp = valueList_().map(function (v) { return '`#' + v.tag + '`'; }).join('  ');
     return {
       ok: false,
       message: 'Tag the value it reflects, so the tailwag says something about how we work:\n' + tagHelp
     };
   }
-  var minReason = cfgNum('MIN_REASON_CHARS');
+  var minReason = cfgNum_('MIN_REASON_CHARS');
   if (parsed.reason.length < minReason) {
     return {
       ok: false,
@@ -212,9 +212,9 @@ function giveWags_(req) {
     giverBal.allowance = giverBal.allowance || allowanceFor_(req.giverId);
 
     result.allowance = num_(giverBal.allowance);
-    var perRecipientCap = cfgNum('MAX_PER_RECIPIENT_PER_PERIOD');
-    var allowSelf = cfgBool('ALLOW_SELF_KUDOS');
-    var allowBots = cfgBool('ALLOW_BOT_RECIPIENTS');
+    var perRecipientCap = cfgNum_('MAX_PER_RECIPIENT_PER_PERIOD');
+    var allowSelf = cfgBool_('ALLOW_SELF_KUDOS');
+    var allowBots = cfgBool_('ALLOW_BOT_RECIPIENTS');
     var weekK = weekKey_();
     var monthK = monthKey_();
 
@@ -330,7 +330,7 @@ function giveWags_(req) {
     if (result.spent > 0) {
       upsertRoster_(req.giverId, { display_name: req.giverName });
       // Giving streak: consecutive periods in which they gave at least one tailwag.
-      if (cfgBool('STREAKS_ENABLED')) {
+      if (cfgBool_('STREAKS_ENABLED')) {
         var curPeriod = periodKey_();
         var lastGave = String(giverBal.last_gave_period || '');
         if (lastGave !== curPeriod) {
@@ -372,7 +372,7 @@ function giveWags_(req) {
 function leaderboard_(period, size) {
   var key = 'leaderboard.' + period;
   var cached = cacheGet_(key);
-  var limit = size || cfgNum('LEADERBOARD_SIZE');
+  var limit = size || cfgNum_('LEADERBOARD_SIZE');
   if (cached) return cached.slice(0, limit);
 
   var field = (period === 'week' || period === 'period' || period === 'day') ? 'received_this_period'
@@ -410,7 +410,7 @@ function giverLeaderboard_(size) {
     .filter(function (r) { return r.user_id && r.dots > 0; })
     .sort(function (a, b) { return b.dots - a.dots; });
   rows.forEach(function (r, i) { r.rank = i + 1; });
-  return rows.slice(0, size || cfgNum('LEADERBOARD_SIZE'));
+  return rows.slice(0, size || cfgNum_('LEADERBOARD_SIZE'));
 }
 
 /** Workspace-wide counters for the App Home and the web leaderboard. */
@@ -469,7 +469,7 @@ function recentReasons_(limit, filter) {
  * @return {Array<{tag:string,label:string,emoji:string,tailwags:number,share:number}>}
  */
 function valueBreakdown_(filter) {
-  if (!cfgBool('VALUES_ENABLED')) return [];
+  if (!cfgBool_('VALUES_ENABLED')) return [];
   var rows = queryLedger_(filter || {});
   var counts = {};
   var total = 0;
@@ -479,7 +479,7 @@ function valueBreakdown_(filter) {
     counts[tag] = (counts[tag] || 0) + num_(r.dots);
     total += num_(r.dots);
   });
-  return valueList().map(function (v) {
+  return valueList_().map(function (v) {
     var dots = counts[v.tag] || 0;
     return {
       tag: v.tag,

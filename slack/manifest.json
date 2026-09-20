@@ -6,7 +6,7 @@
   "display_information": {
     "name": "Tail Wag",
     "description": "Peer recognition, one tail tailwag at a time.",
-    "long_description": "Tail Wag is a peer-to-peer recognition app. Everyone gets a small, fixed number of tailwags to give away each period — so a tailwag means something, and nobody can spam them. Give one with /wag @someone and a reason, by typing Jackson's emoji in any channel, or by reacting with it. Tailwags build a leaderboard, unlock badges at milestones, and earn entries in a monthly raffle. Every tailwag carries a public reason, because the reason is the part people remember. Runs on your own Google Sheet, so the data stays in your Workspace.",
+    "long_description": "Tail Wag is a peer-to-peer recognition app. Everyone gets a small, fixed number of tailwags to give away each period — so a tailwag means something, and nobody can spam them. Give one with /wag @someone and a reason, by typing Jackson's emoji in any channel, or by reacting with it. Tailwags build a leaderboard, unlock badges at milestones, and earn tickets people put into the prize draws they want on the Tail Wag Rewards site. Every tailwag carries a public reason, because the reason is the part people remember. Runs on your own Google Sheet, so the data stays in your Workspace.",
     "background_color": "#ff8a1f"
   },
   "features": {
@@ -31,7 +31,7 @@
         "command": "/wags",
         "url": "REPLACE_WITH_WEB_APP_URL",
         "description": "Your tailwags, the leaderboards, and how it all works",
-        "usage_hint": "[leaderboard | month | all | given | @someone]",
+        "usage_hint": "[rewards | leaderboard | month | all | given | @someone]",
         "should_escape": true
       },
       {

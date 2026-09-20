@@ -1,12 +1,13 @@
 {
   "name": "tail-tailwag",
   "version": "1.0.0",
-  "description": "Peer recognition for Slack, backed by a Google Sheet. Scarce tailwags, leaderboards, badges and a monthly raffle.",
+  "description": "Peer recognition for Slack, backed by a Google Sheet. Scarce tailwags, leaderboards, badges, and a rewards site where tickets go into prize draws.",
   "private": true,
   "scripts": {
     "test": "node test/run.js",
+    "build:portal": "node scripts/build-portal.js",
     "push": "clasp push",
-    "deploy": "clasp deploy"
+    "push:portal": "node scripts/build-portal.js && cd dist/portal && clasp push --force"
   },
   "license": "UNLICENSED"
 }

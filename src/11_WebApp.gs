@@ -1,7 +1,8 @@
 /**
  * Tail Wag — 11_WebApp.gs
  * The HTTP surface: one doPost() that Slack sends everything to, and a doGet()
- * that serves a read-only leaderboard page for screens and all-hands.
+ * that serves either the keyed read-only leaderboard (screens, all-hands) or,
+ * for a signed-in Google user, the rewards portal.
  */
 
 /**
@@ -36,7 +37,7 @@ function responseLikelyTooLate_() {
   // Setting RESPONSE_DEADLINE_MS to 0 makes every slash command answer through
   // response_url. That is the switch to reach for if Apps Script ever gets slow
   // enough that returning inline stops being worth trying.
-  return elapsedMs_() >= cfgNum('RESPONSE_DEADLINE_MS');
+  return elapsedMs_() >= cfgNum_('RESPONSE_DEADLINE_MS');
 }
 
 /**
@@ -82,6 +83,15 @@ function doPost(e) {
 
     if (kind === 'event' && payload.type === 'url_verification') {
       return textOut_(payload.challenge || '');
+    }
+
+    // The rewards portal is a separate Apps Script project with its own cache.
+    // When it changes a setting it pings here so this project drops its cached
+    // copy too, instead of showing the old value for up to six hours.
+    if (kind === 'event' && payload.type === 'tailwag_cache_drop') {
+      cacheDropAll_();
+      __configCache = null;
+      return textOut_('dropped');
     }
 
     var out;
@@ -152,7 +162,14 @@ function safeParseJson_(s) {
 function doGet(e) {
   var params = (e && e.parameter) || {};
 
-  if (!safeEqual_(params.k || '', cfgStr('URL_SECRET'))) {
+  if (!safeEqual_(params.k || '', cfgStr_('URL_SECRET'))) {
+    // No key: this is a person, not a screen. On the rewards portal deployment
+    // they are signed in to Google and get their rewards; anywhere else they
+    // are anonymous and get pointed at the portal.
+    if (cfgBool_('REWARDS_ENABLED')) {
+      if (isRewardsProject_() && activeEmail_()) return servePortal_();
+      return portalSignInPage_();
+    }
     return HtmlService.createHtmlOutput(
       '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<style>body{font:16px/1.5 system-ui,sans-serif;background:#0f1115;color:#e7e9ee;' +
@@ -167,8 +184,8 @@ function doGet(e) {
       time: iso_(),
       periodKey: periodKey_(),
       monthKey: monthKey_(),
-      paused: cfgBool('PAUSED'),
-      hasToken: !!cfgStr('SLACK_BOT_TOKEN'),
+      paused: cfgBool_('PAUSED'),
+      hasToken: !!cfgStr_('SLACK_BOT_TOKEN'),
       stats: globalStats_()
     });
   }
@@ -183,9 +200,9 @@ function doGet(e) {
     stats: globalStats_(),
     feed: recentReasons_(12),
     values: valueBreakdown_(isDailyAllowance_() ? {} : { week_key: weekKey_() }),
-    valuesEnabled: cfgBool('VALUES_ENABLED'),
-    raffleEnabled: cfgBool('RAFFLE_ENABLED'),
-    rafflePrize: cfgStr('RAFFLE_PRIZE'),
+    valuesEnabled: cfgBool_('VALUES_ENABLED'),
+    raffleEnabled: cfgBool_('RAFFLE_ENABLED'),
+    rafflePrize: cfgStr_('RAFFLE_PRIZE'),
     monthName: fmt_(now_(), 'MMMM'),
     updated: fmt_(now_(), 'EEE d MMM, h:mm a'),
     key: params.k

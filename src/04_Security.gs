@@ -43,15 +43,15 @@ function verifyRequest_(e, payload) {
   // --- 4. Proxy-supplied signature, when present, is authoritative. ---------
   var sig = params.slack_signature || (payload && payload.slack_signature);
   var ts = params.slack_timestamp || (payload && payload.slack_timestamp);
-  if (sig && ts && cfgStr('SLACK_SIGNING_SECRET')) {
+  if (sig && ts && cfgStr_('SLACK_SIGNING_SECRET')) {
     var rawBody = (e.postData && e.postData.contents) || '';
-    var sigOk = verifySlackSignature_(cfgStr('SLACK_SIGNING_SECRET'), ts, rawBody, sig);
+    var sigOk = verifySlackSignature_(cfgStr_('SLACK_SIGNING_SECRET'), ts, rawBody, sig);
     if (!sigOk.ok) return { ok: false, reason: sigOk.reason, method: 'signature' };
     return { ok: true, reason: '', method: 'signature' };
   }
 
   // --- 1. URL secret -------------------------------------------------------
-  var wanted = cfgStr('URL_SECRET');
+  var wanted = cfgStr_('URL_SECRET');
   if (!wanted) {
     return { ok: false, reason: 'URL_SECRET is not set in the Config tab. Set it, then append ?k=<secret> to every Request URL in the Slack app.', method: 'url_secret' };
   }
@@ -60,7 +60,7 @@ function verifyRequest_(e, payload) {
   }
 
   // --- 2. Workspace allowlist ---------------------------------------------
-  var allowedTeam = cfgStr('ALLOWED_TEAM_ID');
+  var allowedTeam = cfgStr_('ALLOWED_TEAM_ID');
   if (allowedTeam) {
     var teamId = payloadTeamId_(payload);
     if (teamId && !safeEqual_(teamId, allowedTeam)) {
@@ -69,7 +69,7 @@ function verifyRequest_(e, payload) {
   }
 
   // --- 3. Legacy verification token ---------------------------------------
-  var vt = cfgStr('SLACK_VERIFICATION_TOKEN');
+  var vt = cfgStr_('SLACK_VERIFICATION_TOKEN');
   if (vt) {
     var got = (payload && payload.token) || '';
     if (!safeEqual_(got, vt)) return { ok: false, reason: 'bad_verification_token', method: 'token' };
@@ -124,4 +124,53 @@ function verifySlackSignature_(signingSecret, timestamp, rawBody, providedSignat
 /** Generates a strong URL secret. Called by setup. */
 function generateUrlSecret_() {
   return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
+}
+
+// ---------------------------------------------------------------------------
+// Owner-only entry points
+// ---------------------------------------------------------------------------
+
+/**
+ * Refuses to continue unless the person running this is the script owner.
+ *
+ * Apps Script exposes every top-level function whose name does not end in an
+ * underscore to google.script.run, from ANY page the web app serves. For the
+ * Slack deployment that is anyone on the internet who loads the /exec URL; for
+ * the rewards portal it is everyone in the Workspace. So the editor-only
+ * functions (setup, triggers, demo data) check who is actually calling:
+ *
+ *   - run from the editor by the owner: active user === effective user
+ *   - anonymous web visitor:            active user is ''            → refused
+ *   - a signed-in staff member:         active user is their email   → refused
+ *
+ * @param {string} what the function name, for the error message
+ */
+function ownerOnly_(what) {
+  var active = '';
+  var effective = '';
+  try { active = String(Session.getActiveUser().getEmail() || ''); } catch (e) { active = ''; }
+  try { effective = String(Session.getEffectiveUser().getEmail() || ''); } catch (e) { effective = ''; }
+  if (!effective || active.toLowerCase() !== effective.toLowerCase()) {
+    throw new Error(what + ' can only be run by the script owner from the Apps Script editor.');
+  }
+}
+
+/**
+ * True when a scheduled function was started by one of THIS project's own
+ * installable triggers. Time-driven triggers pass an event carrying the
+ * trigger's unique id; a page calling the function through google.script.run
+ * would have to guess it.
+ * @param {Object} e the event object the function was called with
+ * @param {string} handler the function name the trigger should point at
+ */
+function calledByOwnTrigger_(e, handler) {
+  var uid = e && e.triggerUid ? String(e.triggerUid) : '';
+  if (!uid) return false;
+  try {
+    return ScriptApp.getProjectTriggers().some(function (t) {
+      return t.getHandlerFunction() === handler && String(t.getUniqueId()) === uid;
+    });
+  } catch (err) {
+    return false;
+  }
 }

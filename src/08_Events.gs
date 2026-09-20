@@ -43,12 +43,12 @@ function handleEvent_(body) {
 
 /** Giving by typing the trigger emoji in a normal channel message. */
 function handleMessageEvent_(event) {
-  if (!cfgBool('ALLOW_EMOJI_GIVING')) return emptyOut_();
+  if (!cfgBool_('ALLOW_EMOJI_GIVING')) return emptyOut_();
   // Ignore edits, deletions, joins, bot posts and thread broadcasts.
   if (event.subtype && event.subtype !== 'thread_broadcast') return emptyOut_();
   if (event.bot_id || !event.user || !event.text) return emptyOut_();
 
-  var trigger = ':' + cfgStr('EMOJI_TRIGGER') + ':';
+  var trigger = ':' + cfgStr_('EMOJI_TRIGGER') + ':';
   if (event.text.indexOf(trigger) === -1) return emptyOut_();
 
   var parsed = parseGive_(event.text);
@@ -118,8 +118,8 @@ function handleMessageEvent_(event) {
 
 /** Giving by reacting to a message with the trigger emoji. */
 function handleReactionEvent_(event) {
-  if (!cfgBool('ALLOW_REACTION_GIVING')) return emptyOut_();
-  var trigger = cfgStr('EMOJI_TRIGGER');
+  if (!cfgBool_('ALLOW_REACTION_GIVING')) return emptyOut_();
+  var trigger = cfgStr_('EMOJI_TRIGGER');
   if (String(event.reaction) !== trigger) return emptyOut_();
   if (!event.item || event.item.type !== 'message') return emptyOut_();
 
@@ -153,7 +153,7 @@ function handleReactionEvent_(event) {
     messageTs: event.item.ts
   };
 
-  if (cfgBool('PAUSED')) return emptyOut_();
+  if (cfgBool_('PAUSED')) return emptyOut_();
   if (rosterBlocks_(giverId) || rosterBlocks_(receiverId)) return emptyOut_();
 
   var result;

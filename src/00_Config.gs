@@ -14,13 +14,17 @@ var SHEETS = {
   BALANCES: 'Balances',
   BADGES: 'Badges',
   RAFFLE: 'Raffle',
-  EVENTS: 'Events'
+  EVENTS: 'Events',
+  PODS: 'Pods',
+  TICKETS: 'Tickets',
+  WINNERS: 'Winners'
 };
 
 /** Column order for each tab. Changing these means re-running setupSpreadsheet(). */
 var COLUMNS = {
   CONFIG: ['key', 'value', 'notes'],
-  ROSTER: ['user_id', 'display_name', 'real_name', 'email', 'pool', 'active', 'location', 'added_ts'],
+  ROSTER: ['user_id', 'display_name', 'real_name', 'email', 'pool', 'active', 'location', 'added_ts',
+    'google_email'],
   LEDGER: ['id', 'ts_iso', 'week_key', 'month_key', 'giver_id', 'giver_name', 'receiver_id',
     'receiver_name', 'dots', 'reason', 'value_tag', 'channel_id', 'channel_name', 'source', 'pool',
     'message_ts'],
@@ -29,7 +33,16 @@ var COLUMNS = {
     'given_total', 'badges_json', 'streak', 'last_gave_period', 'updated_ts'],
   BADGES: ['user_id', 'name', 'track', 'threshold', 'badge_key', 'badge_label', 'emoji', 'awarded_ts'],
   RAFFLE: ['period', 'user_id', 'name', 'entries', 'is_winner', 'drawn_ts'],
-  EVENTS: ['ts_iso', 'level', 'type', 'actor', 'detail']
+  EVENTS: ['ts_iso', 'level', 'type', 'actor', 'detail'],
+  // Rewards. A pod is something the org puts up to be won; the Tickets tab is
+  // an append-only wallet ledger (earnings, grants, entries, withdrawals,
+  // refunds); Winners records every draw with the numbers behind it.
+  PODS: ['pod_id', 'title', 'description', 'emoji', 'image_url', 'prize_value', 'winners_count',
+    'max_tickets_per_person', 'opens_ts', 'closes_ts', 'status', 'announced_ts', 'reminded_ts', 'drawn_ts',
+    'created_by', 'created_ts', 'updated_ts', 'sort'],
+  TICKETS: ['id', 'ts_iso', 'user_id', 'name', 'delta', 'kind', 'pod_id', 'ref', 'note', 'actor'],
+  WINNERS: ['pod_id', 'pod_title', 'place', 'user_id', 'name', 'tickets_in', 'pod_total_tickets',
+    'entrants', 'drawn_ts', 'draw_roll', 'fulfilled', 'fulfilled_ts', 'fulfilled_by', 'notes']
 };
 
 /**
@@ -85,12 +98,26 @@ var CONFIG_DEFAULTS = {
   GIVER_BADGE_EMOJI: { value: ':eyes:,:handshake:,:star2:', notes: 'Generosity badge emoji, in order.' },
 
   // ---- Raffle -------------------------------------------------------------
-  RAFFLE_ENABLED: { value: true, notes: 'TRUE runs a monthly drawing where every tailwag received is one entry.' },
+  RAFFLE_ENABLED: { value: true, notes: 'TRUE runs the legacy automatic monthly drawing where every tailwag received is one entry. setupRewards() turns this off — reward pods replace it.' },
   RAFFLE_MAX_ENTRIES_PER_PERSON: { value: 0, notes: 'Cap on entries per person per month so one runaway winner cannot own the drum. 0 = uncapped.' },
   RAFFLE_MIN_ENTRIES_TO_DRAW: { value: 5, notes: 'Skip the drawing if the month had fewer entries than this.' },
   RAFFLE_WINNERS_PER_DRAW: { value: 1, notes: 'How many names to pull each month.' },
   RAFFLE_EXCLUDE_LAST_WINNER: { value: true, notes: 'TRUE keeps last month\'s winner out of this month\'s drum.' },
   RAFFLE_PRIZE: { value: '$50 gift card of your choosing', notes: 'Described in the announcement post. Change it whenever.' },
+
+  // ---- Rewards (ticket pods) ---------------------------------------------
+  REWARDS_ENABLED: { value: false, notes: 'TRUE turns on rewards: tailwags earn tickets, and people enter their tickets into the reward pods of their choice. setupRewards() switches it on; nothing is credited before then.' },
+  REWARDS_LAUNCH_TS: { value: '', notes: 'ISO timestamp. Only tailwags given on or after this moment earn tickets. setupRewards() stamps it once — the fresh start at launch.' },
+  REWARDS_ACCRUAL_CURSOR: { value: '', notes: 'Maintained automatically: row|id of the last Ledger row already turned into tickets. Leave it alone.' },
+  TICKETS_PER_WAG_RECEIVED: { value: 1, notes: 'Tickets earned for each tailwag you RECEIVE. Changes apply going forward — tickets already credited keep the rate they were earned at.' },
+  TICKETS_PER_WAG_GIVEN: { value: 0, notes: 'Tickets earned for each tailwag you GIVE (admin grants excluded). 0 = giving earns nothing. Try 0.5 or 1 to reward generosity.' },
+  REWARDS_PORTAL_URL: { value: '', notes: 'Where people open the rewards site — the Google Site page, or the portal web app /exec URL. Linked from /wags, App Home and every pod announcement.' },
+  REWARDS_ADMIN_EMAILS: { value: '', notes: 'Comma-separated Google emails allowed to run the portal Admin tab, in addition to anyone in ADMIN_USER_IDS.' },
+  REWARDS_ANNOUNCE_PODS: { value: true, notes: 'TRUE posts to ANNOUNCE_CHANNEL when a pod opens, 24 hours before it closes, and when it is drawn.' },
+  REWARDS_DM_WINNERS: { value: true, notes: 'TRUE sends each winner a direct message as well as the channel post.' },
+  REWARDS_EXCLUDE_RECENT_WINNERS_DAYS: { value: 0, notes: 'Keep anyone who won a pod in the last N days out of new draws (their tickets are refunded). 0 = no exclusion.' },
+  SLACK_APP_URL: { value: '', notes: 'The Slack project\'s web app /exec URL (no ?k=). The rewards portal pings it after changing a setting so Slack stops showing the cached old value.' },
+  REWARDS_JOB_SCRIPT_ID: { value: '', notes: 'Set by installRewardsTriggers(). Only the Apps Script project with this id runs scheduled draws, so two projects sharing the sheet can never draw the same pod twice.' },
 
   // ---- Scheduled posts ----------------------------------------------------
   WEEKLY_DIGEST_ENABLED: { value: true, notes: 'TRUE posts last week\'s leaderboard and value breakdown every Monday morning.' },
@@ -119,7 +146,7 @@ var __configCache = null;
  * cold read costs a full spreadsheet open, which on a quiet day was happening on
  * almost every command and eating Slack's three-second budget.
  */
-function getConfigAll() {
+function getConfigAll_() {
   if (__configCache) return __configCache;
 
   var merged = {};
@@ -146,20 +173,20 @@ function getConfigAll() {
 }
 
 /** Raw config value for a key. */
-function cfg(key) {
-  var all = getConfigAll();
+function cfg_(key) {
+  var all = getConfigAll_();
   return all.hasOwnProperty(key) ? all[key] : (CONFIG_DEFAULTS[key] ? CONFIG_DEFAULTS[key].value : undefined);
 }
 
 /** Config value as a trimmed string. */
-function cfgStr(key) {
-  var v = cfg(key);
+function cfgStr_(key) {
+  var v = cfg_(key);
   return v === null || v === undefined ? '' : String(v).trim();
 }
 
 /** Config value as a number, falling back to the default when unparseable. */
-function cfgNum(key) {
-  var v = cfg(key);
+function cfgNum_(key) {
+  var v = cfg_(key);
   var n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
   if (isNaN(n)) {
     var d = CONFIG_DEFAULTS[key] ? CONFIG_DEFAULTS[key].value : 0;
@@ -172,8 +199,8 @@ function cfgNum(key) {
  * Config value as a boolean. Accepts real booleans plus the many things a human
  * types into a spreadsheet cell: TRUE/true/yes/y/1/on.
  */
-function cfgBool(key) {
-  var v = cfg(key);
+function cfgBool_(key) {
+  var v = cfg_(key);
   if (typeof v === 'boolean') return v;
   var s = String(v).trim().toLowerCase();
   if (s === '') {
@@ -184,20 +211,20 @@ function cfgBool(key) {
 }
 
 /** Config value as an array of trimmed, non-empty strings split on commas. */
-function cfgList(key) {
-  var s = cfgStr(key);
+function cfgList_(key) {
+  var s = cfgStr_(key);
   if (!s) return [];
   return s.split(',').map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 0; });
 }
 
 /** Config value as an array of numbers. */
-function cfgNumList(key) {
-  return cfgList(key).map(function (x) { return parseInt(x, 10); })
+function cfgNumList_(key) {
+  return cfgList_(key).map(function (x) { return parseInt(x, 10); })
     .filter(function (n) { return !isNaN(n); });
 }
 
 /** Writes a config key back to the sheet and busts the cache. */
-function setConfig(key, value) {
+function setConfig_(key, value) {
   var sh = sheet_(SHEETS.CONFIG);
   var data = sh.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
@@ -219,11 +246,11 @@ function setConfig(key, value) {
  * @param {string} track 'receiver' or 'giver'
  * @return {Array<{threshold:number,label:string,emoji:string,key:string,track:string}>}
  */
-function badgeLadder(track) {
+function badgeLadder_(track) {
   var isGiver = track === 'giver';
-  var thresholds = cfgNumList(isGiver ? 'GIVER_BADGE_THRESHOLDS' : 'BADGE_THRESHOLDS');
-  var labels = cfgList(isGiver ? 'GIVER_BADGE_LABELS' : 'BADGE_LABELS');
-  var emoji = cfgList(isGiver ? 'GIVER_BADGE_EMOJI' : 'BADGE_EMOJI');
+  var thresholds = cfgNumList_(isGiver ? 'GIVER_BADGE_THRESHOLDS' : 'BADGE_THRESHOLDS');
+  var labels = cfgList_(isGiver ? 'GIVER_BADGE_LABELS' : 'BADGE_LABELS');
+  var emoji = cfgList_(isGiver ? 'GIVER_BADGE_EMOJI' : 'BADGE_EMOJI');
   var out = [];
   for (var i = 0; i < thresholds.length; i++) {
     out.push({
@@ -242,11 +269,11 @@ function badgeLadder(track) {
  * The company values people can tag a tailwag with.
  * @return {Array<{tag:string,label:string,emoji:string}>}
  */
-function valueList() {
-  if (!cfgBool('VALUES_ENABLED')) return [];
-  var tags = cfgList('VALUE_TAGS');
-  var labels = cfgList('VALUE_LABELS');
-  var emoji = cfgList('VALUE_EMOJI');
+function valueList_() {
+  if (!cfgBool_('VALUES_ENABLED')) return [];
+  var tags = cfgList_('VALUE_TAGS');
+  var labels = cfgList_('VALUE_LABELS');
+  var emoji = cfgList_('VALUE_EMOJI');
   return tags.map(function (t, i) {
     return {
       tag: String(t).toLowerCase(),
@@ -264,7 +291,7 @@ function valueList() {
 function resolveValue_(input) {
   var q = String(input || '').toLowerCase().replace(/^#/, '').trim();
   if (!q) return null;
-  var values = valueList();
+  var values = valueList_();
   var exact = values.filter(function (v) { return v.tag === q; });
   if (exact.length === 1) return exact[0];
   var prefix = values.filter(function (v) { return v.tag.indexOf(q) === 0; });

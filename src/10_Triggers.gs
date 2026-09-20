@@ -9,22 +9,36 @@
  */
 
 /** The one scheduled entry point. Installed by installTriggers(). */
-function dailyJob() {
+function dailyJob(e) {
+  if (!calledByOwnTrigger_(e, 'dailyJob')) ownerOnly_('dailyJob');
+  // Every function without a trailing underscore can be called by anyone who
+  // loads a page served by the web app, via google.script.run. The scheduled
+  // work is harmless to repeat except for the posts it makes, so a second call
+  // on the same day is a no-op rather than a second digest.
+  var props = PropertiesService.getScriptProperties();
+  var today = dayKey_();
+  if (props.getProperty('TW_DAILY_LAST') === today) return 'Already ran today.';
+  props.setProperty('TW_DAILY_LAST', today);
+  return dailyJob_();
+}
+
+/** The body of the daily job. */
+function dailyJob_() {
   try {
     var d = now_();
     var dow = parseInt(fmt_(d, 'u'), 10) % 7; // 1=Mon…7=Sun → 1..6,0
     var dom = parseInt(fmt_(d, 'd'), 10);
-    var startDow = DAY_INDEX[String(cfgStr('WEEK_START_DAY') || 'MONDAY').toUpperCase()];
+    var startDow = DAY_INDEX[String(cfgStr_('WEEK_START_DAY') || 'MONDAY').toUpperCase()];
     if (startDow === undefined) startDow = 1;
 
-    if (dom === 1 && cfgBool('RAFFLE_ENABLED')) {
+    if (dom === 1 && cfgBool_('RAFFLE_ENABLED')) {
       var draw = runRaffleDraw_(prevMonthKey_(d), false);
       logInfo_('raffle.scheduled', 'system', draw.message);
     }
 
     // The digest reports a calendar week, so it goes out on the week-start day
     // whether allowances refill daily or weekly.
-    var wantDigest = cfgBool('WEEKLY_DIGEST_ENABLED') && dow === startDow;
+    var wantDigest = cfgBool_('WEEKLY_DIGEST_ENABLED') && dow === startDow;
     if (wantDigest) {
       var res = postDigest_(false);
       logInfo_('digest.scheduled', 'system', res.ok ? 'posted' : res.error);
@@ -80,7 +94,7 @@ function warmCaches() {
   var started = new Date().getTime();
   var warmed = [];
   try {
-    getConfigAll(); warmed.push('config');
+    getConfigAll_(); warmed.push('config');
     getRoster_(); warmed.push('roster');
     balanceIndex_(); warmed.push('balances');
     globalStats_(); warmed.push('stats');
@@ -109,18 +123,18 @@ function nearestMinuteInterval_(mins) {
 }
 
 /** Installs (or reinstalls) the daily job, the sheet watcher and the cache warmer. Safe to run repeatedly. */
-function installTriggers() {
+function installTriggers_() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     var fn = t.getHandlerFunction();
     if (fn === 'dailyJob' || fn === 'onConfigEdit' || fn === 'warmCaches') ScriptApp.deleteTrigger(t);
   });
-  var hour = Math.max(0, Math.min(23, cfgNum('DIGEST_HOUR') || 9));
+  var hour = Math.max(0, Math.min(23, cfgNum_('DIGEST_HOUR') || 9));
   ScriptApp.newTrigger('dailyJob')
     .timeBased()
     .atHour(hour)
     .nearMinute(5)
     .everyDays(1)
-    .inTimezone(cfgStr('TIMEZONE') || 'America/Denver')
+    .inTimezone(cfgStr_('TIMEZONE') || 'America/Denver')
     .create();
   try {
     ScriptApp.newTrigger('onConfigEdit')
@@ -132,9 +146,9 @@ function installTriggers() {
   }
 
   var warmEvery = 0;
-  if (cfgBool('KEEP_CACHES_WARM')) {
+  if (cfgBool_('KEEP_CACHES_WARM')) {
     // Apps Script only offers a few fixed minute intervals.
-    warmEvery = nearestMinuteInterval_(cfgNum('WARM_INTERVAL_MIN'));
+    warmEvery = nearestMinuteInterval_(cfgNum_('WARM_INTERVAL_MIN'));
     ScriptApp.newTrigger('warmCaches')
       .timeBased()
       .everyMinutes(warmEvery)
@@ -142,14 +156,14 @@ function installTriggers() {
   }
 
   logInfo_('triggers.installed', 'system',
-    'dailyJob at ' + hour + ':05 ' + cfgStr('TIMEZONE') + ', onConfigEdit' +
+    'dailyJob at ' + hour + ':05 ' + cfgStr_('TIMEZONE') + ', onConfigEdit' +
     (warmEvery ? ', warmCaches every ' + warmEvery + 'm' : ''));
-  return 'Daily job installed for ' + hour + ':05 ' + cfgStr('TIMEZONE') +
+  return 'Daily job installed for ' + hour + ':05 ' + cfgStr_('TIMEZONE') +
     ', plus the sheet watcher' + (warmEvery ? ' and the cache warmer (every ' + warmEvery + ' minutes).' : '.');
 }
 
 /** Removes the scheduled job. */
-function removeTriggers() {
+function removeTriggers_() {
   var n = 0;
   ScriptApp.getProjectTriggers().forEach(function (t) {
     var fn = t.getHandlerFunction();
@@ -167,7 +181,7 @@ function removeTriggers() {
  * @param {boolean} force post even when the digest is switched off
  */
 function postDigest_(force) {
-  if (!force && !cfgBool('WEEKLY_DIGEST_ENABLED')) return { ok: false, error: 'digest_disabled' };
+  if (!force && !cfgBool_('WEEKLY_DIGEST_ENABLED')) return { ok: false, error: 'digest_disabled' };
 
   // The digest always covers a calendar week. In daily-allowance mode the
   // "period" is a single day, which is far too thin to be worth a post, so the
@@ -206,7 +220,7 @@ function postDigest_(force) {
     receivers: receivers.length
   }, valueBreakdown_(ledgerFilter));
 
-  var channel = resolveChannel_(cfgStr('ANNOUNCE_CHANNEL'));
+  var channel = resolveChannel_(cfgStr_('ANNOUNCE_CHANNEL'));
   var res = postMessage_(channel, msg.text, msg.blocks);
   return res.ok ? { ok: true } : { ok: false, error: res.error };
 }
@@ -225,7 +239,7 @@ function postDigest_(force) {
  * @return {{ok:boolean, message:string, winners:Array}}
  */
 function runRaffleDraw_(period, force) {
-  if (!cfgBool('RAFFLE_ENABLED') && !force) {
+  if (!cfgBool_('RAFFLE_ENABLED') && !force) {
     return { ok: false, message: 'The raffle is switched off.', winners: [] };
   }
 
@@ -242,7 +256,7 @@ function runRaffleDraw_(period, force) {
   var totalEntries = 0;
   pool.forEach(function (r) { totalEntries += num_(r.entries); });
 
-  var minEntries = cfgNum('RAFFLE_MIN_ENTRIES_TO_DRAW');
+  var minEntries = cfgNum_('RAFFLE_MIN_ENTRIES_TO_DRAW');
   if (totalEntries < minEntries && !force) {
     return {
       ok: false,
@@ -257,7 +271,7 @@ function runRaffleDraw_(period, force) {
 
   // Optionally keep last month's winner out of the drum.
   var candidates = pool.slice();
-  if (cfgBool('RAFFLE_EXCLUDE_LAST_WINNER')) {
+  if (cfgBool_('RAFFLE_EXCLUDE_LAST_WINNER')) {
     var lastPeriod = prevMonthOf_(period);
     var lastWinners = {};
     raffleWinners_(lastPeriod).forEach(function (w) { lastWinners[String(w.user_id)] = true; });
@@ -265,7 +279,7 @@ function runRaffleDraw_(period, force) {
     if (filtered.length) candidates = filtered;
   }
 
-  var want = Math.max(1, Math.min(cfgNum('RAFFLE_WINNERS_PER_DRAW') || 1, candidates.length));
+  var want = Math.max(1, Math.min(cfgNum_('RAFFLE_WINNERS_PER_DRAW') || 1, candidates.length));
   var winners = drawWeighted_(candidates, want);
 
   winners.forEach(function (w) { markRaffleWinner_(period, String(w.user_id)); });
@@ -274,11 +288,11 @@ function runRaffleDraw_(period, force) {
     return { user_id: String(w.user_id), name: String(w.name), entries: num_(w.entries) };
   }), totalEntries, pool.length);
 
-  var channel = resolveChannel_(cfgStr('ANNOUNCE_CHANNEL'));
+  var channel = resolveChannel_(cfgStr_('ANNOUNCE_CHANNEL'));
   postMessage_(channel, msg.text, msg.blocks);
 
   // DM the winners so it does not get lost in the channel.
-  if (cfgBool('DM_RECIPIENT')) {
+  if (cfgBool_('DM_RECIPIENT')) {
     slackApiAll_(winners.map(function (w) {
       return {
         method: 'chat.postMessage',
@@ -287,7 +301,7 @@ function runRaffleDraw_(period, force) {
           text: 'You won the ' + period + ' Tail Wag raffle.',
           blocks: [sectionBlock_(':tada: *You won the ' + period + ' Tail Wag raffle* — ' +
             num_(w.entries) + ' entries out of ' + totalEntries + '.' +
-            (cfgStr('RAFFLE_PRIZE') ? '\nPrize: *' + escapeSlack_(cfgStr('RAFFLE_PRIZE')) + '*' : ''))]
+            (cfgStr_('RAFFLE_PRIZE') ? '\nPrize: *' + escapeSlack_(cfgStr_('RAFFLE_PRIZE')) + '*' : ''))]
         }
       };
     }));
@@ -300,7 +314,7 @@ function runRaffleDraw_(period, force) {
   return {
     ok: true,
     message: 'Drew ' + winners.map(function (w) { return w.name; }).join(', ') +
-      ' from ' + totalEntries + ' entries. Announced in ' + cfgStr('ANNOUNCE_CHANNEL') + '.',
+      ' from ' + totalEntries + ' entries. Announced in ' + cfgStr_('ANNOUNCE_CHANNEL') + '.',
     winners: winners
   };
 }
@@ -433,10 +447,10 @@ function rebuildBalancesFromLedger_() {
     Object.keys(acc).forEach(function (id) {
       var b = acc[id];
       var keys = [];
-      badgeLadder('receiver').forEach(function (def) {
+      badgeLadder_('receiver').forEach(function (def) {
         if (b.received_total >= def.threshold) keys.push(def.key);
       });
-      badgeLadder('giver').forEach(function (def) {
+      badgeLadder_('giver').forEach(function (def) {
         if (b.given_total >= def.threshold) keys.push(def.key);
       });
       b.badges_json = JSON.stringify(keys);
@@ -501,4 +515,16 @@ function pruneEvents_(keepRows) {
   var remove = last - keep - 1;
   s.deleteRows(2, remove);
   return remove;
+}
+
+/** Editor entry point — owner only. See ownerOnly_(). */
+function installTriggers() {
+  ownerOnly_('installTriggers');
+  return installTriggers_();
+}
+
+/** Editor entry point — owner only. See ownerOnly_(). */
+function removeTriggers() {
+  ownerOnly_('removeTriggers');
+  return removeTriggers_();
 }
