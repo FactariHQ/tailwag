@@ -49,9 +49,10 @@ the bot token. Config accessors are now private, editor functions are owner-only
 only their own trigger id. Rotating the Slack bot token is recommended.
 
 ## Open items
-- Live Apps Script lags `main`: the Ideas feature and upstream's `MAX_PER_RECIPIENT_PER_PERIOD`
-  default of 5 are merged but not yet pushed to either project. The build session's clasp token expired
-  (`invalid_rapt`); once `clasp login` as robots@actaba.com is done, run the two redeploy commands above.
+- Live Apps Script matches `main` (Sep 21 2026: portal deployment @8, Slack deployment @20, both
+  checked file-for-file with `clasp pull`). Google's reauth policy expires the clasp token periodically
+  (`invalid_rapt`); in a cloud session, sign in with a two-step flow whose pending state survives
+  workspace restarts, since a waiting `clasp login --no-localhost` process does not.
 - No reward pods exist yet — prizes are Josh's call.
 - Link josh972 to josh@actaba.com on the Admin tab so Josh's own wallet shows up.
 - Rotate the Slack bot token (the old anonymous `/exec` page could read it before this release).
