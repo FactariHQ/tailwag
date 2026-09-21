@@ -118,8 +118,8 @@ test('a hidden drawn reward leaves the staff Rewards and Winners tabs, and nothi
   const pod = drawnPod(env);
   env.setActiveUser('dana@actaba.com');
   let st = env.call('portalLoad');
-  eq(st.pods.length, 1, 'recently drawn shows before hiding');
-  eq(st.winners.length, 1);
+  eq(st.pods.length, 0, 'drawn rewards never show on the Rewards tab');
+  eq(st.winners.length, 1, 'but the win shows on Winners until hidden');
   const before = wallet(env, 'U08SAM01');
   const ticketRows = env.sheetRows('Tickets').length;
 
