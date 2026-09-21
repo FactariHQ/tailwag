@@ -136,6 +136,7 @@ function podFromRow_(r) {
     created_ts: tsIso_(r.created_ts),
     updated_ts: tsIso_(r.updated_ts),
     sort: num_(r.sort),
+    hidden_ts: tsIso_(r.hidden_ts),
     __row: r.__row
   };
 }
@@ -676,6 +677,38 @@ function publishPod_(podId, actor) {
     logInfo_('rewards.pod_published', actor, { pod: podId });
     return { ok: true, message: pod.title + ' is live.' };
   });
+}
+
+/**
+ * Hides a finished (drawn or cancelled) pod from staff, or shows it again.
+ * Staff stop seeing it on the Rewards and Winners tabs; admins still see it,
+ * marked hidden. Nothing is deleted and no tickets move — the Tickets and
+ * Winners rows stay as the audit trail, and a person's own history still
+ * lists what they put in.
+ */
+function setPodHidden_(podId, actor, hide) {
+  if (!isRewardsProject_()) return notRewardsProject_();
+  return withLock_(function () {
+    rewardsCacheDrop_();
+    var pod = podById_(podId);
+    if (!pod) return { ok: false, error: 'That reward no longer exists.' };
+    if (pod.status !== 'drawn' && pod.status !== 'cancelled') {
+      return { ok: false, error: 'Only a drawn or cancelled reward can be hidden. Cancel it first (that refunds everyone), or unpublish by editing it.' };
+    }
+    if (!!pod.hidden_ts === !!hide) return { ok: true, message: pod.title + (hide ? ' is already hidden.' : ' is already showing.') };
+    ensureColumn_(SHEETS.PODS, 'hidden_ts');
+    patchPod_(pod, { hidden_ts: hide ? iso_() : '' });
+    logInfo_(hide ? 'rewards.pod_hidden' : 'rewards.pod_shown', actor, { pod: podId });
+    return { ok: true, message: pod.title + (hide ? ' is hidden from staff.' : ' is showing to staff again.') };
+  });
+}
+
+/** Adds a declared column to a live sheet that predates it, so a write has somewhere to land. */
+function ensureColumn_(sheetName, col) {
+  if (headerOf_(sheetName).index[col] !== undefined) return;
+  var sh = sheet_(sheetName);
+  sh.getRange(1, sh.getLastColumn() + 1, 1, 1).setValues([[col]]);
+  cacheDrop_('header.' + sheetName);
 }
 
 /** Cancels a pod and refunds every ticket in it. */

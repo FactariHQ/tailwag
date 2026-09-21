@@ -56,7 +56,7 @@ function setupSpreadsheet_() {
       ? s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String)
       : [];
     ['period_key', 'month_key', 'week_key', 'period', 'last_gave_period',
-      'opens_ts', 'closes_ts', 'announced_ts', 'reminded_ts', 'drawn_ts', 'fulfilled_ts', 'pod_id', 'ref', 'idea_id', 'created_ts', 'decided_ts'].forEach(function (colName) {
+      'opens_ts', 'closes_ts', 'announced_ts', 'reminded_ts', 'drawn_ts', 'fulfilled_ts', 'pod_id', 'ref', 'idea_id', 'created_ts', 'decided_ts', 'hidden_ts'].forEach(function (colName) {
       var at = live.indexOf(colName);
       if (at !== -1) s.getRange(1, at + 1, Math.max(s.getMaxRows ? s.getMaxRows() : 1000, 1000), 1)
         .setNumberFormat('@');

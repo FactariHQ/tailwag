@@ -27,7 +27,7 @@ the two are linked (Admin tab → Link → josh972 → josh@actaba.com).
 
 ## Redeploying (both projects run the same code)
 ```
-npm test                                   # 198 tests (test/run.js + test/ideas.js)
+npm test                                   # 203 tests (test/run.js + ideas.js + hide.js)
 npm run push:portal                        # builds dist/portal (DOMAIN manifest + PORTAL_SPREADSHEET_ID), pushes
 cd dist/portal && clasp create-deployment -i AKfycby48t97ewQQN3PBtg3O5889KZLLczGZP-os5vLPvLLubMkSUbpZfU-UEtdwKgSA2wL9
 # Slack project: push src/ with its own .clasp.json, then
@@ -42,6 +42,12 @@ IDEA_SELECTED_TICKETS (20). "Make it a reward" pre-fills the pod editor and pick
 New sheet tab Ideas (created on first use, or by setupSpreadsheet/setupRewards), new Config keys
 IDEAS_ENABLED, IDEA_SELECTED_TICKETS, IDEA_MAX_OPEN_PER_PERSON, new Tickets kind `idea`.
 
+## Hiding finished rewards (added Sep 21 2026)
+The staff Rewards tab shows live rewards only; drawn ones appear on Winners. Admin tab → Rewards has
+**Hide from staff / Show to staff** on drawn or cancelled pods, which also takes their winners off the
+staff Winners tab. It sets Pods.hidden_ts (the column is added on first use); nothing is deleted and no
+tickets move. Deployed: portal @10, Slack @22.
+
 ## Security fix shipped with this
 Every top-level function without a trailing underscore is callable via google.script.run from any page
 a web app serves. Before this release the anonymous Slack /exec page could call getConfigAll() and read
@@ -49,11 +55,12 @@ the bot token. Config accessors are now private, editor functions are owner-only
 only their own trigger id. Rotating the Slack bot token is recommended.
 
 ## Open items
-- Live Apps Script matches `main` (Sep 21 2026: portal deployment @8, Slack deployment @20, both
-  checked file-for-file with `clasp pull`). Google's reauth policy expires the clasp token periodically
+- Live Apps Script matches `main` (Sep 21 2026: portal deployment @10, Slack deployment @22). Google's reauth policy expires the clasp token periodically
   (`invalid_rapt`); in a cloud session, sign in with a two-step flow whose pending state survives
   workspace restarts, since a waiting `clasp login --no-localhost` process does not.
-- No reward pods exist yet — prizes are Josh's call.
+- The two test rewards (Threshold Reduction, drawn; $50 Gas Card, cancelled) are off the Rewards tab;
+  click Hide from staff on each to take Threshold Reduction off Winners too.
+- No real reward pods yet — prizes are Josh's call.
 - Link josh972 to josh@actaba.com on the Admin tab so Josh's own wallet shows up.
 - Rotate the Slack bot token (the old anonymous `/exec` page could read it before this release).
 - `/wag-admin sync` to fill in the roster emails that are still blank.

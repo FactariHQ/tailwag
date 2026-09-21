@@ -40,7 +40,7 @@ var COLUMNS = {
   // refunds); Winners records every draw with the numbers behind it.
   PODS: ['pod_id', 'title', 'description', 'emoji', 'image_url', 'prize_value', 'winners_count',
     'max_tickets_per_person', 'opens_ts', 'closes_ts', 'status', 'announced_ts', 'reminded_ts', 'drawn_ts',
-    'created_by', 'created_ts', 'updated_ts', 'sort'],
+    'created_by', 'created_ts', 'updated_ts', 'sort', 'hidden_ts'],
   TICKETS: ['id', 'ts_iso', 'user_id', 'name', 'delta', 'kind', 'pod_id', 'ref', 'note', 'actor'],
   WINNERS: ['pod_id', 'pod_title', 'place', 'user_id', 'name', 'tickets_in', 'pod_total_tickets',
     'entrants', 'drawn_ts', 'draw_roll', 'fulfilled', 'fulfilled_ts', 'fulfilled_by', 'notes'],

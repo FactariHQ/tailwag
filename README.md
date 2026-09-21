@@ -241,7 +241,7 @@ Tailwags earn tickets. The org puts up **reward pods** — an extra PTO day, a g
 
 ### Where people see it
 
-- **The rewards site** — a web app embedded in the ACT Google Site, signed in with the actaba.com Google account. Tabs: *Rewards* (open pods with a ticket stepper and a live win-chance, what's coming up, what was just drawn), *Ideas* (nominate and upvote rewards), *My tailwags* (every reason people gave, given and received, badges and progress), *Winners*, *Ticket history*, and for admins, *Admin*.
+- **The rewards site** — a web app embedded in the ACT Google Site, signed in with the actaba.com Google account. Tabs: *Rewards* (open pods with a ticket stepper and a live win-chance, and what's coming up — drawn rewards move to *Winners*), *Ideas* (nominate and upvote rewards), *My tailwags* (every reason people gave, given and received, badges and progress), *Winners*, *Ticket history*, and for admins, *Admin*.
 - **Slack** — `/wags rewards` (also `tickets`, `prizes`), a Rewards section on the App Home tab, a line in `/wags help`, and a "+1 ticket" note on every recipient DM.
 - **#kudos** — a post when a pod opens, a reminder 24 hours before it closes, and the draw result. Winners are DMed.
 
@@ -261,7 +261,7 @@ Staff see who nominated each idea and the vote counts; only admins see who voted
 
 ### The Admin tab
 
-Totals across the economy (earned, granted, unspent, in open draws, spent, pending), a pod editor (title, description, prize, emoji or image, winners, per-person cap, open and close times, draft or publish), every pod with who is in it and **Draw now / Cancel**, winners with a *Prize delivered* checkbox, everyone's wallet with a bonus-ticket grant, the earn-rate settings, and the recent ticket activity. Admins are anyone in `ADMIN_USER_IDS`, plus any Google email listed in `REWARDS_ADMIN_EMAILS`.
+Totals across the economy (earned, granted, unspent, in open draws, spent, pending), a pod editor (title, description, prize, emoji or image, winners, per-person cap, open and close times, draft or publish), every pod with who is in it and **Draw now / Cancel**, **Hide from staff / Show to staff** on drawn or cancelled pods (takes them off the Winners tab without deleting anything or moving a ticket), winners with a *Prize delivered* checkbox, everyone's wallet with a bonus-ticket grant, the earn-rate settings, and the recent ticket activity. Admins are anyone in `ADMIN_USER_IDS`, plus any Google email listed in `REWARDS_ADMIN_EMAILS`.
 
 ### The data
 
@@ -269,7 +269,7 @@ Four more tabs:
 
 | Tab | Holds |
 |---|---|
-| **Pods** | One row per reward. `status` is `draft`, `live`, `drawn` or `cancelled`; "opening soon / open / awaiting draw" is derived from the times so it can never go stale. |
+| **Pods** | One row per reward. `status` is `draft`, `live`, `drawn` or `cancelled`; "opening soon / open / awaiting draw" is derived from the times so it can never go stale. `hidden_ts` is set when an admin hides a finished pod from staff. |
 | **Tickets** | Append-only wallet ledger. Every row is a signed delta: `earn_received`, `earn_given`, `grant`, `idea`, `enter` (−), `withdraw` (+), `refund` (+). A wallet is the sum of a person's rows; what they have in a pod is minus the sum of that pod's rows. Nothing is edited in place, so the tab is its own audit trail. |
 | **Winners** | One row per winner per draw — tickets in, tickets in the pod, entrants, the random roll that picked them, and delivery status. |
 | **Ideas** | One row per nominated reward idea — nominator, status (`open`, `selected`, `declined`, `withdrawn`), the upvoters, and what was paid and which pod it became. |
@@ -355,10 +355,10 @@ The web leaderboard page uses the same secret, so the link is safe to pin in a c
 ## Tests
 
 ```bash
-npm test          # node test/run.js && node test/ideas.js
+npm test          # node test/run.js && node test/ideas.js && node test/hide.js
 ```
 
-198 tests, no network and no Google account required. `test/harness.js` recreates enough of the Apps Script runtime — `SpreadsheetApp` with real 1-indexed range semantics, `Utilities.formatDate` with genuine timezone handling, `CacheService`, `PropertiesService`, `LockService`, `UrlFetchApp`, `ScriptApp` — to load the actual `.gs` files into a Node VM. The tests exercise the real code, not a reimplementation of it, and the fake spreadsheet is a real 2D array so off-by-one bugs in the store layer surface exactly as they would in production.
+203 tests, no network and no Google account required. `test/harness.js` recreates enough of the Apps Script runtime — `SpreadsheetApp` with real 1-indexed range semantics, `Utilities.formatDate` with genuine timezone handling, `CacheService`, `PropertiesService`, `LockService`, `UrlFetchApp`, `ScriptApp` — to load the actual `.gs` files into a Node VM. The tests exercise the real code, not a reimplementation of it, and the fake spreadsheet is a real 2D array so off-by-one bugs in the store layer surface exactly as they would in production.
 
 The fake sheet also lies the way Sheets lies: it coerces a string like `"2026-09"` into a Date, turns a leading `=` into a live formula, and strips the apostrophe that forces a cell to text. That matters — a version of this app that passed a naive test suite would have reported zero monthly tailwags and an empty raffle forever, because Sheets silently reinterprets the period keys.
 
@@ -421,4 +421,5 @@ slack/manifest.json    Paste into Slack to create the app
 test/harness.js        Apps Script runtime shim
 test/run.js            188 tests
 test/ideas.js          10 reward-ideas tests
+test/hide.js           5 hide-from-staff tests
 ```
