@@ -355,7 +355,7 @@ The web leaderboard page uses the same secret, so the link is safe to pin in a c
 ## Tests
 
 ```bash
-node test/run.js
+npm test          # node test/run.js && node test/ideas.js
 ```
 
 198 tests, no network and no Google account required. `test/harness.js` recreates enough of the Apps Script runtime — `SpreadsheetApp` with real 1-indexed range semantics, `Utilities.formatDate` with genuine timezone handling, `CacheService`, `PropertiesService`, `LockService`, `UrlFetchApp`, `ScriptApp` — to load the actual `.gs` files into a Node VM. The tests exercise the real code, not a reimplementation of it, and the fake spreadsheet is a real 2D array so off-by-one bugs in the store layer surface exactly as they would in production.
@@ -419,5 +419,6 @@ portal/                .clasp.json for the rewards project (scriptId + spreadshe
 scripts/build-portal.js  Builds dist/portal with the DOMAIN manifest
 slack/manifest.json    Paste into Slack to create the app
 test/harness.js        Apps Script runtime shim
-test/run.js            198 tests
+test/run.js            188 tests
+test/ideas.js          10 reward-ideas tests
 ```
