@@ -174,6 +174,7 @@
   .grantgrid { grid-template-columns: 120px 1fr auto; align-items: end; }
   .check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hiddenpod td { opacity: .6; }
   .status-pill { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
   .status-pill.open { background: var(--good-soft); color: var(--good); }
   .status-pill.soon, .status-pill.draft { background: var(--warn-soft); color: var(--warn); }
@@ -584,7 +585,7 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
       return g.rows.map(function (w) {
         return '<div class="item"><span class="avatar">' + esc(initials(w.name)) + '</span><div class="main">' +
           '<div class="line1"><b>' + esc(w.name) + '</b>' + (w.user_id === S.me.userId ? ' 🎉' : '') + ' won ' + emoji(w.emoji) + ' <b>' + esc(w.pod_title) + '</b>' +
-          (g.rows.length > 1 ? ' <span class="muted">(' + ordinal(w.place) + ')</span>' : '') + '</div>' +
+          (g.rows.length > 1 ? ' <span class="muted">(' + ordinal(w.place) + ')</span>' : '') + (admin && w.hidden ? ' <span class="chip">hidden from staff</span>' : '') + '</div>' +
           '<div class="muted" style="font-size:13px">' + (w.prize_value ? esc(w.prize_value) + ' · ' : '') + tickets(w.tickets_in) + ' of ' + fmtN(w.pod_total_tickets) + ' in the draw · ' + w.entrants + ' ' + (w.entrants === 1 ? 'entrant' : 'entrants') + '</div>' +
           (admin ? '<label class="check" style="margin-top:6px"><input type="checkbox" data-fulfill="' + esc(w.pod_id) + '|' + esc(w.user_id) + '" ' + (w.fulfilled ? 'checked' : '') + '> Prize delivered</label>'
             : (w.fulfilled ? '<span class="chip">✓ delivered</span>' : '')) +
@@ -654,7 +655,10 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
         if (p.status === 'draft') acts.push('<button class="btn small primary" data-publish="' + esc(p.pod_id) + '">Publish</button>');
         if (p.status === 'live') acts.push('<button class="btn small" data-draw="' + esc(p.pod_id) + '">Draw now</button>');
         if (p.status === 'draft' || p.status === 'live') acts.push('<button class="btn small danger" data-cancel="' + esc(p.pod_id) + '">Cancel</button>');
-        return '<tr><td><b>' + emoji(p.emoji) + ' ' + esc(p.title) + '</b>' + (p.prize_value ? '<div class="muted" style="font-size:12px">' + esc(p.prize_value) + '</div>' : '') +
+        if (p.status === 'drawn' || p.status === 'cancelled') acts.push(p.hidden
+          ? '<button class="btn small" data-unhide="' + esc(p.pod_id) + '">Show to staff</button>'
+          : '<button class="btn small" data-hide="' + esc(p.pod_id) + '">Hide from staff</button>');
+        return '<tr' + (p.hidden ? ' class="hiddenpod"' : '') + '><td><b>' + emoji(p.emoji) + ' ' + esc(p.title) + '</b>' + (p.hidden ? ' <span class="chip">hidden</span>' : '') + (p.prize_value ? '<div class="muted" style="font-size:12px">' + esc(p.prize_value) + '</div>' : '') +
           (p.entrantList.length ? '<details><summary>Who is in</summary><div style="font-size:13px;margin-top:4px">' + p.entrantList.map(function (x) {
             return esc(x.name) + ' <span class="muted num">' + fmtN(x.tickets) + '</span>';
           }).join('<br>') + '</div></details>' : '') + '</td>' +
@@ -833,6 +837,11 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
       if (!confirmInline(el, 'Cancel and refund?')) return;
       adminDo(call('portalAdminCancel', d.cancel, '')); return;
     }
+    if (d.hide) {
+      if (!confirmInline(el, 'Hide it from staff?')) return;
+      adminDo(call('portalAdminHide', d.hide, true)); return;
+    }
+    if (d.unhide) { adminDo(call('portalAdminHide', d.unhide, false)); return; }
     if (d.fulfill) {
       var parts = d.fulfill.split('|');
       adminDo(call('portalAdminFulfill', parts[0], parts[1], el.checked)); return;
