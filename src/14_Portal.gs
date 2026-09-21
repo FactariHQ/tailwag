@@ -258,7 +258,7 @@ function portalState_(me) {
     me: { userId: me.userId, name: me.name, email: me.email, isAdmin: me.isAdmin },
     wallet: {
       available: wallet.available, spendable: wallet.spendable, inPlay: wallet.inPlay, spent: wallet.spent,
-      earned: wallet.earned, granted: wallet.granted, pending: wallet.pending, byPod: wallet.byPod
+      earned: wallet.earned, granted: wallet.granted, ideas: wallet.ideas, pending: wallet.pending, byPod: wallet.byPod
     },
     kudos: {
       receivedTotal: num_(bal.received_total), receivedMonth: num_(bal.received_month),
@@ -272,11 +272,15 @@ function portalState_(me) {
     history: history.slice(0, 300),
     pods: visible,
     winners: winners.slice(0, 200),
+    ideas: cfgBool_('IDEAS_ENABLED') ? ideasForPage_(me.userId, me.isAdmin) : [],
     rules: {
       perReceived: num_(cfgNum_('TICKETS_PER_WAG_RECEIVED')),
       perGiven: num_(cfgNum_('TICKETS_PER_WAG_GIVEN')),
       launch: tsIso_(cfgStr_('REWARDS_LAUNCH_TS')),
-      enabled: cfgBool_('REWARDS_ENABLED')
+      enabled: cfgBool_('REWARDS_ENABLED'),
+      ideasEnabled: cfgBool_('IDEAS_ENABLED'),
+      ideaTickets: num_(cfgNum_('IDEA_SELECTED_TICKETS')),
+      ideaMaxOpen: Math.floor(num_(cfgNum_('IDEA_MAX_OPEN_PER_PERSON')))
     },
     now: new Date(t).toISOString()
   };
@@ -287,6 +291,32 @@ function portalSetAllocation(podId, target) {
   var me = requirePortalUser_();
   if (!me.userId) return { ok: false, error: 'Your Google account is not linked to a Slack account, so it has no tickets.', state: portalState_(me) };
   var res = setAllocation_(me.userId, me.name, String(podId || ''), target);
+  res.state = portalState_(me);
+  return res;
+}
+
+/** Nominates a reward idea as the signed-in person. Callable from the page. */
+function portalSubmitIdea(title, details) {
+  var me = requirePortalUser_();
+  if (!me.userId) return { ok: false, error: 'Your Google account is not linked to a Slack account yet, so ideas cannot be credited to you.', state: portalState_(me) };
+  var res = submitIdea_(me.userId, me.name, title, details);
+  res.state = portalState_(me);
+  return res;
+}
+
+/** Upvotes (or un-upvotes) an idea as the signed-in person. Callable from the page. */
+function portalToggleIdeaVote(ideaId) {
+  var me = requirePortalUser_();
+  if (!me.userId) return { ok: false, error: 'Your Google account is not linked to a Slack account yet.', state: portalState_(me) };
+  var res = toggleIdeaVote_(me.userId, String(ideaId || ''));
+  res.state = portalState_(me);
+  return res;
+}
+
+/** Withdraws one of the signed-in person's own open ideas. Callable from the page. */
+function portalWithdrawIdea(ideaId) {
+  var me = requirePortalUser_();
+  var res = withdrawIdea_(me.userId, String(ideaId || ''));
   res.state = portalState_(me);
   return res;
 }
@@ -354,12 +384,12 @@ function portalAdminState_() {
   Object.keys(wallets).forEach(function (uid) {
     if (!people[uid]) people[uid] = { user_id: uid, name: wallets[uid].name, email: roster[uid] ? String(roster[uid].email || '') : '' };
   });
-  var totalsAll = { earned: 0, granted: 0, available: 0, inPlay: 0, spent: 0, pending: 0 };
+  var totalsAll = { earned: 0, granted: 0, ideas: 0, available: 0, inPlay: 0, spent: 0, pending: 0 };
   var list = Object.keys(people).map(function (uid) {
-    var w = wallets[uid] || { available: 0, earned: 0, granted: 0, inPlay: 0, spent: 0, pending: 0, byPod: {} };
-    ['earned', 'granted', 'available', 'inPlay', 'spent', 'pending'].forEach(function (k) { totalsAll[k] = tix_(totalsAll[k] + num_(w[k])); });
+    var w = wallets[uid] || { available: 0, earned: 0, granted: 0, ideas: 0, inPlay: 0, spent: 0, pending: 0, byPod: {} };
+    ['earned', 'granted', 'ideas', 'available', 'inPlay', 'spent', 'pending'].forEach(function (k) { totalsAll[k] = tix_(totalsAll[k] + num_(w[k])); });
     var p = people[uid];
-    p.available = w.available; p.earned = w.earned; p.granted = w.granted; p.inPlay = w.inPlay;
+    p.available = w.available; p.earned = w.earned; p.granted = w.granted; p.ideas = w.ideas || 0; p.inPlay = w.inPlay;
     p.spent = w.spent; p.pending = w.pending; p.byPod = w.byPod;
     return p;
   }).sort(function (a, b) { return (b.earned + b.granted) - (a.earned + a.granted) || a.name.localeCompare(b.name); });
@@ -392,6 +422,9 @@ function portalAdminState_() {
       excludeDays: num_(cfgNum_('REWARDS_EXCLUDE_RECENT_WINNERS_DAYS')),
       portalUrl: cfgStr_('REWARDS_PORTAL_URL'),
       channel: cfgStr_('ANNOUNCE_CHANNEL'),
+      ideasEnabled: cfgBool_('IDEAS_ENABLED'),
+      ideaTickets: num_(cfgNum_('IDEA_SELECTED_TICKETS')),
+      ideaMaxOpen: Math.floor(num_(cfgNum_('IDEA_MAX_OPEN_PER_PERSON'))),
       scheduler: jobOwner ? (jobOwner === here ? 'running in this project' : 'running in another project') : 'NOT INSTALLED — run installRewardsTriggers()'
     }
   };
@@ -406,7 +439,20 @@ function adminResult_(res) {
 /** Create or update a pod. */
 function portalAdminSavePod(input) {
   var me = requirePortalAdmin_();
-  return adminResult_(savePod_(input || {}, me.email));
+  input = input || {};
+  var res = savePod_(input, me.email);
+  // Turning a nominated idea into a reward selects the idea and pays its nominator.
+  if (res.ok && input.from_idea) {
+    var picked = decideIdea_(String(input.from_idea), 'selected', me.email, { podId: res.pod_id });
+    res.message = res.message + (picked.ok ? ' ' + picked.message : ' (The idea was not updated: ' + picked.error + ')');
+  }
+  return adminResult_(res);
+}
+
+/** Selects, declines or reopens a reward idea. */
+function portalAdminDecideIdea(ideaId, decision, note) {
+  var me = requirePortalAdmin_();
+  return adminResult_(decideIdea_(String(ideaId || ''), String(decision || ''), me.email, { note: String(note || '') }));
 }
 
 function portalAdminPublish(podId) {
@@ -462,6 +508,12 @@ function portalAdminSettings(s) {
   rate('TICKETS_PER_WAG_GIVEN', s.perGiven);
   flag('REWARDS_ANNOUNCE_PODS', s.announce);
   flag('REWARDS_DM_WINNERS', s.dmWinners);
+  flag('IDEAS_ENABLED', s.ideasEnabled);
+  if (s.ideaTickets !== undefined && s.ideaTickets !== null && s.ideaTickets !== '') {
+    var it = Math.round(num_(s.ideaTickets) * 100) / 100;
+    if (it < 0 || it > 1000) throw new Error('Idea tickets must be between 0 and 1000.');
+    if (it !== num_(cfgNum_('IDEA_SELECTED_TICKETS'))) { setConfig_('IDEA_SELECTED_TICKETS', it); changed.push('IDEA_SELECTED_TICKETS = ' + it); }
+  }
   if (s.excludeDays !== undefined && s.excludeDays !== '' && num_(s.excludeDays) !== num_(cfgNum_('REWARDS_EXCLUDE_RECENT_WINNERS_DAYS'))) {
     var d = Math.max(0, Math.floor(num_(s.excludeDays)));
     setConfig_('REWARDS_EXCLUDE_RECENT_WINNERS_DAYS', d);
