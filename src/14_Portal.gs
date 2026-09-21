@@ -178,6 +178,7 @@ function podForPage_(pod, totals, userId, t) {
 function winnerForPage_(w, podsById) {
   var pod = podsById[w.pod_id];
   return {
+    hidden: !!(pod && pod.hidden_ts),
     pod_id: w.pod_id, pod_title: w.pod_title, emoji: pod ? pod.emoji : '🎁',
     prize_value: pod ? pod.prize_value : '', place: w.place, user_id: w.user_id, name: w.name,
     tickets_in: w.tickets_in, pod_total_tickets: w.pod_total_tickets, entrants: w.entrants,
@@ -221,6 +222,7 @@ function portalState_(me) {
   // Staff see live pods, plus anything settled in the last 45 days.
   var recentCut = t - 45 * 86400000;
   var visible = pods.filter(function (p) {
+    if (p.hidden_ts) return false;   // an admin hid it
     if (p.status === 'live') return true;
     if (p.status === 'drawn') return tsMs_(p.drawn_ts) >= recentCut;
     return false;   // drafts are admin-only; a cancelled pod shows up as a refund in history
@@ -247,7 +249,9 @@ function portalState_(me) {
   });
   history.sort(function (a, b) { return tsMs_(b.ts) - tsMs_(a.ts); });
 
-  var winners = winnerRows_().slice().sort(function (a, b) {
+  var winners = winnerRows_().filter(function (w) {
+    return !(podsById[w.pod_id] && podsById[w.pod_id].hidden_ts);
+  }).sort(function (a, b) {
     return tsMs_(b.drawn_ts) - tsMs_(a.drawn_ts) || a.place - b.place;
   }).map(function (w) { return winnerForPage_(w, podsById); });
 
@@ -370,6 +374,7 @@ function portalAdminState_() {
     out.entrantList = entrants;
     out.announced_ts = p.announced_ts;
     out.created_by = p.created_by;
+    out.hidden = !!p.hidden_ts;
     return out;
   });
 
@@ -463,6 +468,12 @@ function portalAdminPublish(podId) {
 function portalAdminCancel(podId, reason) {
   var me = requirePortalAdmin_();
   return adminResult_(cancelPod_(String(podId || ''), me.email, String(reason || '')));
+}
+
+/** Hides a finished reward from staff (hide = true) or shows it again. */
+function portalAdminHide(podId, hide) {
+  var me = requirePortalAdmin_();
+  return adminResult_(setPodHidden_(String(podId || ''), me.email, hide !== false));
 }
 
 function portalAdminDraw(podId) {
