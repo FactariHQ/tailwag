@@ -27,7 +27,7 @@ the two are linked (Admin tab → Link → josh972 → josh@actaba.com).
 
 ## Redeploying (both projects run the same code)
 ```
-npm test                                   # 188 tests
+npm test                                   # 198 tests (test/run.js + test/ideas.js)
 npm run push:portal                        # builds dist/portal (DOMAIN manifest + PORTAL_SPREADSHEET_ID), pushes
 cd dist/portal && clasp create-deployment -i AKfycby48t97ewQQN3PBtg3O5889KZLLczGZP-os5vLPvLLubMkSUbpZfU-UEtdwKgSA2wL9
 # Slack project: push src/ with its own .clasp.json, then
@@ -36,6 +36,12 @@ clasp create-deployment -i AKfycbwrMNnV9AL-RFPM_InEOMbehObIhmytfsj4SHzXvOXH-HwLc
 `create-deployment -i` updates in place, so the URLs never change. Check with `selfTestRewards()` in the
 portal editor.
 
+## Reward ideas (added Sep 21 2026)
+Ideas tab on the site: staff nominate rewards, upvote each other's, and a picked idea pays its nominator
+IDEA_SELECTED_TICKETS (20). "Make it a reward" pre-fills the pod editor and picking happens on save.
+New sheet tab Ideas (created on first use, or by setupSpreadsheet/setupRewards), new Config keys
+IDEAS_ENABLED, IDEA_SELECTED_TICKETS, IDEA_MAX_OPEN_PER_PERSON, new Tickets kind `idea`.
+
 ## Security fix shipped with this
 Every top-level function without a trailing underscore is callable via google.script.run from any page
 a web app serves. Before this release the anonymous Slack /exec page could call getConfigAll() and read
@@ -43,10 +49,9 @@ the bot token. Config accessors are now private, editor functions are owner-only
 only their own trigger id. Rotating the Slack bot token is recommended.
 
 ## Open items
-- Live Apps Script lags `main` by one commit: upstream's `MAX_PER_RECIPIENT_PER_PERIOD` default of 5.
-  Only a default, and the live Config tab already carries its own value, so nothing is wrong today —
-  but `npm run push:portal` and a `clasp push` on the Slack project will close the gap. The build
-  session's clasp token has expired (`invalid_rapt`), so it needs `clasp login` as robots@actaba.com.
+- Live Apps Script lags `main`: the Ideas feature and upstream's `MAX_PER_RECIPIENT_PER_PERIOD`
+  default of 5 are merged but not yet pushed to either project. The build session's clasp token expired
+  (`invalid_rapt`); once `clasp login` as robots@actaba.com is done, run the two redeploy commands above.
 - No reward pods exist yet — prizes are Josh's call.
 - Link josh972 to josh@actaba.com on the Admin tab so Josh's own wallet shows up.
 - Rotate the Slack bot token (the old anonymous `/exec` page could read it before this release).

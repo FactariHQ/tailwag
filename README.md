@@ -241,9 +241,23 @@ Tailwags earn tickets. The org puts up **reward pods** — an extra PTO day, a g
 
 ### Where people see it
 
-- **The rewards site** — a web app embedded in the ACT Google Site, signed in with the actaba.com Google account. Tabs: *Rewards* (open pods with a ticket stepper and a live win-chance, what's coming up, what was just drawn), *My tailwags* (every reason people gave, given and received, badges and progress), *Winners*, *Ticket history*, and for admins, *Admin*.
+- **The rewards site** — a web app embedded in the ACT Google Site, signed in with the actaba.com Google account. Tabs: *Rewards* (open pods with a ticket stepper and a live win-chance, what's coming up, what was just drawn), *Ideas* (nominate and upvote rewards), *My tailwags* (every reason people gave, given and received, badges and progress), *Winners*, *Ticket history*, and for admins, *Admin*.
 - **Slack** — `/wags rewards` (also `tickets`, `prizes`), a Rewards section on the App Home tab, a line in `/wags help`, and a "+1 ticket" note on every recipient DM.
 - **#kudos** — a post when a pod opens, a reminder 24 hours before it closes, and the draw result. Winners are DMed.
+
+### Reward ideas
+
+The **Ideas** tab lets anyone nominate a reward they would like to win. Everyone can upvote (not their own), the board sorts by votes, and when an admin picks an idea its nominator earns `IDEA_SELECTED_TICKETS` tickets (20 to start).
+
+| | |
+|---|---|
+| **Nominating** | A name (4–80 characters) and optional details. An idea already on the board under the same name is refused with a nudge to upvote it. `IDEA_MAX_OPEN_PER_PERSON` (5) caps how many of one person's ideas can wait at once. The nominator can withdraw an open idea. |
+| **Picking** | *Make it a reward* opens the pod editor pre-filled from the idea; saving the pod picks the idea, links the two and pays the nominator. *Pick* pays without making a pod. Picking is final and pays once — the payout is a Tickets row with ref `idea:<id>`, so a double click, a retried request or someone resetting the row by hand cannot pay twice. |
+| **Declining** | *Decline* pays nothing and closes voting; an admin can *Reopen* it later. |
+| **Announcing** | A pick is posted to the announcement channel and DMed to the nominator (following `REWARDS_ANNOUNCE_PODS` and `REWARDS_DM_WINNERS`). `/wags rewards` and `/wags help` point people at the Ideas tab. |
+| **Settings** | Admin tab → Settings: the payout, and a switch to hide the Ideas tab (`IDEAS_ENABLED`). |
+
+Staff see who nominated each idea and the vote counts; only admins see who voted. Ideas live on an **Ideas** tab in the sheet, written only by the portal project like the other rewards tabs.
 
 ### The Admin tab
 
@@ -251,13 +265,14 @@ Totals across the economy (earned, granted, unspent, in open draws, spent, pendi
 
 ### The data
 
-Three more tabs:
+Four more tabs:
 
 | Tab | Holds |
 |---|---|
 | **Pods** | One row per reward. `status` is `draft`, `live`, `drawn` or `cancelled`; "opening soon / open / awaiting draw" is derived from the times so it can never go stale. |
-| **Tickets** | Append-only wallet ledger. Every row is a signed delta: `earn_received`, `earn_given`, `grant`, `enter` (−), `withdraw` (+), `refund` (+). A wallet is the sum of a person's rows; what they have in a pod is minus the sum of that pod's rows. Nothing is edited in place, so the tab is its own audit trail. |
+| **Tickets** | Append-only wallet ledger. Every row is a signed delta: `earn_received`, `earn_given`, `grant`, `idea`, `enter` (−), `withdraw` (+), `refund` (+). A wallet is the sum of a person's rows; what they have in a pod is minus the sum of that pod's rows. Nothing is edited in place, so the tab is its own audit trail. |
 | **Winners** | One row per winner per draw — tickets in, tickets in the pod, entrants, the random roll that picked them, and delivery status. |
+| **Ideas** | One row per nominated reward idea — nominator, status (`open`, `selected`, `declined`, `withdrawn`), the upvoters, and what was paid and which pod it became. |
 
 Earned tickets are copied from the Ledger into Tickets by the 15-minute job (and before every entry). Until then they show as *pending* at the current rate, so balances are always exact. `REWARDS_ACCRUAL_CURSOR` (`row|id`) remembers how far it got, so it reads only new Ledger rows; if someone deletes Ledger rows by hand it rescans, and the per-row `ref` stops anything being credited twice.
 
@@ -298,7 +313,7 @@ npm run push:portal                                # builds dist/portal with the
 
 ## The data
 
-Seven core tabs (plus the three rewards tabs above), all readable by a human:
+Seven core tabs (plus the four rewards tabs above), all readable by a human:
 
 | Tab | Holds |
 |---|---|
@@ -340,10 +355,10 @@ The web leaderboard page uses the same secret, so the link is safe to pin in a c
 ## Tests
 
 ```bash
-node test/run.js
+npm test          # node test/run.js && node test/ideas.js
 ```
 
-188 tests, no network and no Google account required. `test/harness.js` recreates enough of the Apps Script runtime — `SpreadsheetApp` with real 1-indexed range semantics, `Utilities.formatDate` with genuine timezone handling, `CacheService`, `PropertiesService`, `LockService`, `UrlFetchApp`, `ScriptApp` — to load the actual `.gs` files into a Node VM. The tests exercise the real code, not a reimplementation of it, and the fake spreadsheet is a real 2D array so off-by-one bugs in the store layer surface exactly as they would in production.
+198 tests, no network and no Google account required. `test/harness.js` recreates enough of the Apps Script runtime — `SpreadsheetApp` with real 1-indexed range semantics, `Utilities.formatDate` with genuine timezone handling, `CacheService`, `PropertiesService`, `LockService`, `UrlFetchApp`, `ScriptApp` — to load the actual `.gs` files into a Node VM. The tests exercise the real code, not a reimplementation of it, and the fake spreadsheet is a real 2D array so off-by-one bugs in the store layer surface exactly as they would in production.
 
 The fake sheet also lies the way Sheets lies: it coerces a string like `"2026-09"` into a Date, turns a leading `=` into a live formula, and strips the apostrophe that forces a cell to text. That matters — a version of this app that passed a naive test suite would have reported zero monthly tailwags and an empty raffle forever, because Sheets silently reinterprets the period keys.
 
@@ -396,6 +411,7 @@ src/
   13_Rewards.gs        Tickets, pods, entering, drawing, the 15-minute rewards job
   14_Portal.gs         The rewards site: identity, page data, admin actions
   15_RewardsSlack.gs   /wags rewards and the App Home rewards section
+  16_Ideas.gs          Reward ideas: nominating, upvoting, picking and paying the nominator
   Leaderboard.html     The web leaderboard page
   Portal.html          The rewards site
   PortalLogo.html      Jackson, inlined for the rewards site
@@ -404,4 +420,5 @@ scripts/build-portal.js  Builds dist/portal with the DOMAIN manifest
 slack/manifest.json    Paste into Slack to create the app
 test/harness.js        Apps Script runtime shim
 test/run.js            188 tests
+test/ideas.js          10 reward-ideas tests
 ```

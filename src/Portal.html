@@ -182,6 +182,26 @@
   details summary { cursor: pointer; font-size: 13px; color: var(--brand-ink); font-weight: 600; }
   .stack { display: flex; flex-direction: column; gap: 14px; }
 
+  /* Ideas */
+  .idea { display: flex; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .idea:last-child { border-bottom: none; }
+  .vote { flex: none; width: 52px; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 12px; padding: 6px 0; background: var(--surface); cursor: pointer; color: var(--ink-2); font-weight: 750; }
+  .vote .arrow { font-size: 14px; line-height: 1; }
+  .vote .n { font-size: 17px; color: var(--ink); }
+  .vote[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); }
+  .vote[aria-pressed="true"] .n { color: var(--brand-ink); }
+  .vote:disabled { cursor: default; opacity: .6; }
+  .idea h3 { margin: 0; font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+  .idea .details { color: var(--ink-2); font-size: 14px; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .idea .meta { font-size: 12px; color: var(--ink-3); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+  .idea .actions { margin-top: 10px; }
+  .picked { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--good-soft); color: var(--good); }
+  .declined { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
+  .idea-intro { display: flex; gap: 14px; align-items: flex-start; padding: 16px; }
+  .idea-intro .big { font-size: 34px; line-height: 1; }
+  .idea-intro p { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+  .fromidea { margin: 12px 16px 0; padding: 10px 12px; border-radius: 10px; background: var(--good-soft); color: var(--good); font-size: 13px; font-weight: 600; }
+
   /* Toast + loading */
   .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(160%); opacity: 0; visibility: hidden; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-weight: 600; box-shadow: var(--shadow); transition: transform .25s, opacity .25s, visibility .25s; max-width: calc(100% - 32px); z-index: 10; }
   .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
@@ -228,6 +248,8 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
   var A = null;          // admin state
   var tab = 'rewards';
   var kudosView = 'received';
+  var ideaView = 'open';
+  var ideaDraft = { title: '', details: '' };   // survives re-renders while someone is typing
   var drafts = {};       // pod_id → target tickets the person is dialling in
   var busy = false;
   var editing = null;    // pod being edited in admin
@@ -344,12 +366,16 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     html += '<div class="card stats">' +
       stat(cap(BOOT.unitPlural) + ' received', S.kudos.receivedTotal, fmtN(S.kudos.receivedMonth) + ' this month') +
       stat('Given', S.kudos.givenTotal, fmtN(S.kudos.remaining) + ' of ' + fmtN(S.kudos.allowance) + ' left this ' + S.kudos.periodWord) +
-      stat('Tickets earned', n(w.earned) + n(w.granted), (w.granted ? fmtN(w.granted) + ' bonus · ' : '') + 'since ' + (S.rules.launch ? new Date(S.rules.launch).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'launch')) +
+      stat('Tickets earned', n(w.earned) + n(w.granted) + n(w.ideas), (n(w.granted) + n(w.ideas) ? fmtN(n(w.granted) + n(w.ideas)) + ' bonus · ' : '') + 'since ' + (S.rules.launch ? new Date(S.rules.launch).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'launch')) +
       '</div>';
     html += '</section>';
 
     if (!S.me.userId && tab !== 'admin') tab = 'admin';
-    var tabs = [['rewards', 'Rewards', openCount], ['kudos', 'My ' + BOOT.unitPlural], ['winners', 'Winners'], ['history', 'Ticket history']];
+    var openIdeas = (S.ideas || []).filter(function (i) { return i.status === 'open'; }).length;
+    var tabs = [['rewards', 'Rewards', openCount]];
+    if (S.rules.ideasEnabled) tabs.push(['ideas', 'Ideas', openIdeas]);
+    tabs = tabs.concat([['kudos', 'My ' + BOOT.unitPlural], ['winners', 'Winners'], ['history', 'Ticket history']]);
+    if (tab === 'ideas' && !S.rules.ideasEnabled) tab = 'rewards';
     if (S.me.isAdmin) tabs.push(['admin', 'Admin']);
     html += '<nav class="tabs" role="tablist">' + tabs.map(function (t) {
       return '<button class="tab" role="tab" data-tab="' + t[0] + '" aria-selected="' + (tab === t[0]) + '">' + esc(t[1]) +
@@ -357,6 +383,7 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     }).join('') + '</nav>';
 
     html += '<section class="panel" ' + (tab === 'rewards' ? '' : 'hidden') + '>' + renderRewards() + '</section>';
+    if (S.rules.ideasEnabled) html += '<section class="panel" ' + (tab === 'ideas' ? '' : 'hidden') + '>' + renderIdeas() + '</section>';
     html += '<section class="panel" ' + (tab === 'kudos' ? '' : 'hidden') + '>' + renderKudos() + '</section>';
     html += '<section class="panel" ' + (tab === 'winners' ? '' : 'hidden') + '>' + renderWinners(S.winners, false) + '</section>';
     html += '<section class="panel" ' + (tab === 'history' ? '' : 'hidden') + '>' + renderHistory() + '</section>';
@@ -384,7 +411,8 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     if (done.length) html += '<div class="section-title">Recently drawn</div><div class="pods">' + done.map(podCard).join('') + '</div>';
     html += '<p class="muted" style="font-size:13px;margin-top:18px">Every ' + esc(BOOT.unitSingular) + ' you receive earns ' + tickets(S.rules.perReceived) +
       (S.rules.perGiven > 0 ? ', and every one you give earns ' + tickets(S.rules.perGiven) : '') +
-      '. Tickets you put into a reward are spent when it draws, win or lose — you can take them back out any time before it closes.</p>';
+      '. Tickets you put into a reward are spent when it draws, win or lose — you can take them back out any time before it closes.' +
+      (S.rules.ideasEnabled ? ' Got an idea for something worth winning? <button class="linkbtn" data-tab="ideas">Nominate it</button> — if it gets picked you earn ' + tickets(S.rules.ideaTickets) + '.' : '') + '</p>';
     return html;
   }
 
@@ -438,6 +466,76 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
       html += '<div class="alloc muted" style="font-size:13px">Cancelled — your tickets were refunded.</div>';
     }
     html += '</div></article>';
+    return html;
+  }
+
+  function renderIdeas() {
+    var all = S.ideas || [];
+    var html = '';
+    html += '<div class="card" style="margin-bottom:14px"><div class="idea-intro"><div class="big">💡</div><div>' +
+      '<b>What should we put up for grabs?</b><p>Nominate a reward you would like to win. Everyone can upvote, and if an admin picks your idea you earn <b>' +
+      tickets(S.rules.ideaTickets) + '</b>.</p></div></div>';
+    if (S.me.userId) {
+      html += '<form class="form" id="ideaform" autocomplete="off" style="padding-top:0">' +
+        field('Your idea', '<input name="title" required maxlength="80" value="' + esc(ideaDraft.title) + '" placeholder="A Friday off, a pizza lunch for the clinic, a $50 DoorDash card…">', 'full') +
+        field('Why it would be great (optional)', '<textarea name="details" maxlength="600" placeholder="Any details that would help an admin set it up">' + esc(ideaDraft.details) + '</textarea>', 'full') +
+        '<div class="full actions"><button class="btn primary" type="submit"' + (busy ? ' disabled' : '') + '>Nominate</button>' +
+        (S.rules.ideaMaxOpen ? '<span class="muted" style="font-size:12px;align-self:center">Up to ' + S.rules.ideaMaxOpen + ' of yours can wait for a decision at once.</span>' : '') + '</div></form>';
+    } else {
+      html += '<div class="muted" style="padding:0 16px 16px;font-size:13px">Your Google login is not linked to a Slack account yet, so you cannot nominate ideas. An admin can link it on the Admin tab.</div>';
+    }
+    html += '</div>';
+
+    var counts = { open: 0, selected: 0, other: 0 };
+    all.forEach(function (i) { if (i.status === 'open') counts.open++; else if (i.status === 'selected') counts.selected++; else counts.other++; });
+    var shown = all.filter(function (i) {
+      if (ideaView === 'open') return i.status === 'open';
+      if (ideaView === 'selected') return i.status === 'selected';
+      return true;
+    });
+    html += '<div class="card"><div class="card-head"><h2>' + ({ open: 'Waiting for a decision', selected: 'Picked', all: 'Every idea' }[ideaView]) + '</h2>' +
+      '<div class="seg">' + [['open', 'Open', counts.open], ['selected', 'Picked', counts.selected], ['all', 'All', all.length]].map(function (x) {
+        return '<button data-iv="' + x[0] + '" aria-pressed="' + (ideaView === x[0]) + '">' + x[1] + ' <span class="muted">' + x[2] + '</span></button>';
+      }).join('') + '</div></div>';
+    if (!shown.length) {
+      html += '<div class="empty"><div class="e">💡</div>' + (ideaView === 'open' ? 'No ideas waiting. Be the first — what would you love to win?' : ideaView === 'selected' ? 'Nothing picked yet.' : 'No ideas yet.') + '</div></div>';
+      return html;
+    }
+    html += '<div class="list">' + shown.map(ideaRow).join('') + '</div></div>';
+    return html;
+  }
+
+  function ideaRow(i) {
+    var canVote = i.status === 'open' && !i.mine && !!S.me.userId;
+    var html = '<div class="idea">';
+    html += '<button class="vote" data-vote="' + esc(i.idea_id) + '" aria-pressed="' + i.voted + '"' + (canVote && !busy ? '' : ' disabled') +
+      ' title="' + (i.mine ? 'Your own idea' : i.status !== 'open' ? 'Voting is closed' : i.voted ? 'Remove your upvote' : 'Upvote') + '">' +
+      '<span class="arrow">▲</span><span class="n num">' + i.votes + '</span></button>';
+    html += '<div class="main" style="flex:1;min-width:0"><h3>' + esc(i.title) + '</h3>';
+    if (i.details) html += '<div class="details">' + esc(i.details) + '</div>';
+    html += '<div class="meta"><span>' + (i.mine ? '<b>You</b>' : esc(i.nominator)) + ' · ' + esc(when(i.created_ts)) + '</span>';
+    if (i.status === 'selected') {
+      html += '<span class="picked">🎉 Picked' + (i.paid_tickets ? ' · +' + fmtN(i.paid_tickets) + ' tickets' : '') + '</span>';
+      if (i.pod_title) html += '<span>Now a reward: <b>' + esc(i.pod_title) + '</b>' + (i.pod_phase === 'open' ? ' — <button class="linkbtn" data-tab="rewards">enter it</button>' : '') + '</span>';
+    } else if (i.status === 'declined') {
+      html += '<span class="declined">Not this time</span>' + (i.decision_note ? '<span>“' + esc(i.decision_note) + '”</span>' : '');
+    } else if (i.status === 'withdrawn') {
+      html += '<span class="declined">Withdrawn</span>';
+    }
+    if (S.me.isAdmin && i.voter_names && i.voter_names.length) {
+      html += '<details><summary>' + i.voter_names.length + ' upvote' + (i.voter_names.length === 1 ? '' : 's') + '</summary><div style="font-size:12px">' + i.voter_names.map(esc).join(', ') + '</div></details>';
+    }
+    html += '</div>';
+    var acts = [];
+    if (i.mine && i.status === 'open') acts.push('<button class="btn small" data-withdraw="' + esc(i.idea_id) + '">Withdraw</button>');
+    if (S.me.isAdmin && i.status === 'open') {
+      acts.push('<button class="btn small primary" data-topod="' + esc(i.idea_id) + '">Make it a reward</button>');
+      acts.push('<button class="btn small" data-select="' + esc(i.idea_id) + '">Pick (pay ' + fmtN(S.rules.ideaTickets) + ')</button>');
+      acts.push('<button class="btn small danger" data-decline="' + esc(i.idea_id) + '">Decline</button>');
+    }
+    if (S.me.isAdmin && i.status === 'declined') acts.push('<button class="btn small" data-reopen="' + esc(i.idea_id) + '">Reopen</button>');
+    if (acts.length) html += '<div class="actions">' + acts.join('') + '</div>';
+    html += '</div></div>';
     return html;
   }
 
@@ -496,7 +594,7 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
   }
   function ordinal(i) { return i + (['th', 'st', 'nd', 'rd'][(i % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][i % 100] || 'th'); }
 
-  var KIND = { earn_received: 'Earned', earn_given: 'Earned for giving', grant: 'Bonus', enter: 'Entered', withdraw: 'Took back', refund: 'Refund' };
+  var KIND = { earn_received: 'Earned', earn_given: 'Earned for giving', grant: 'Bonus', idea: 'Idea picked', enter: 'Entered', withdraw: 'Took back', refund: 'Refund' };
   function renderHistory() {
     if (!S.history.length) return '<div class="card empty"><div class="e">🎟️</div>No tickets yet. Every ' + esc(BOOT.unitSingular) + ' you receive adds one.</div>';
     return '<div class="card"><div class="list">' + S.history.map(function (h) {
@@ -521,7 +619,7 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     var html = '';
     var t = A.totals;
     html += '<div class="tiles">' + [
-      ['Tickets earned', t.earned], ['Bonus granted', t.granted], ['Unspent (in wallets)', t.available],
+      ['Tickets earned', t.earned], ['Bonus granted', t.granted], ['Paid for ideas', t.ideas], ['Unspent (in wallets)', t.available],
       ['In open draws', t.inPlay], ['Spent in draws', t.spent], ['Pending credit', t.pending]
     ].map(function (x) { return '<div class="card tile stat"><div class="k">' + esc(x[0]) + '</div><div class="v num">' + fmtN(x[1]) + '</div></div>'; }).join('') + '</div>';
 
@@ -530,6 +628,7 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     var isNew = !e.pod_id;
     html += '<div class="card" id="editor"><div class="card-head"><h2>' + (isNew ? 'New reward' : 'Edit: ' + esc(e.title)) + '</h2>' +
       (isNew ? '' : '<button class="linkbtn" data-newpod="1">+ New reward instead</button>') + '</div>';
+    if (e.from_idea) html += '<div class="fromidea">💡 From ' + esc(e.from_nominator || 'a') + '’s idea. Saving this reward picks the idea and pays them ' + tickets(A.settings.ideaTickets) + '.</div>';
     html += '<form class="form" id="podform" autocomplete="off">' +
       field('Title', '<input name="title" required maxlength="80" value="' + esc(e.title || '') + '" placeholder="Extra PTO day">', 'full') +
       field('Description', '<textarea name="description" maxlength="600" placeholder="What it is, any rules, how it gets delivered">' + esc(e.description || '') + '</textarea>', 'full') +
@@ -543,7 +642,7 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
       field('Display order', '<input name="sort" type="number" value="' + (e.sort || 0) + '">', '', 'Lower shows first; ties sort by close time') +
       (isNew || e.status === 'draft' ? '<div class="field"><label>&nbsp;</label><label class="check"><input type="checkbox" name="publish"> Publish now (otherwise saved as a draft)</label></div>' : '<div></div>') +
       '<div class="full actions"><button class="btn primary" type="submit"' + (busy ? ' disabled' : '') + '>' + (isNew ? 'Create reward' : 'Save changes') + '</button>' +
-      (isNew ? '' : '<button class="btn" type="button" data-newpod="1">Cancel edit</button>') + '</div>' +
+      (isNew && !e.from_idea ? '' : '<button class="btn" type="button" data-newpod="1">Cancel edit</button>') + '</div>' +
       '</form></div>';
 
     // Pod list
@@ -578,7 +677,7 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     html += '<div class="table-wrap" style="max-height:520px"><table><thead><tr><th><input type="checkbox" id="allpeople" aria-label="Select everyone"></th><th>Person</th><th class="r">Earned</th><th class="r">Bonus</th><th class="r">Unspent</th><th class="r">In draws</th><th class="r">Spent</th></tr></thead><tbody>' +
       A.people.map(function (p) {
         return '<tr><td><input type="checkbox" data-person="' + esc(p.user_id) + '"></td><td><b>' + esc(p.name) + '</b><div class="muted" style="font-size:12px">' + esc(p.email) + '</div></td>' +
-          '<td class="r num">' + fmtN(p.earned) + (p.pending ? '<div class="muted" style="font-size:11px">' + fmtN(p.pending) + ' pending</div>' : '') + '</td><td class="r num">' + fmtN(p.granted) + '</td>' +
+          '<td class="r num">' + fmtN(p.earned) + (p.pending ? '<div class="muted" style="font-size:11px">' + fmtN(p.pending) + ' pending</div>' : '') + '</td><td class="r num">' + fmtN(n(p.granted) + n(p.ideas)) + '</td>' +
           '<td class="r num"><b>' + fmtN(p.available) + '</b></td><td class="r num">' + fmtN(p.inPlay) + '</td><td class="r num">' + fmtN(p.spent) + '</td></tr>';
       }).join('') + '</tbody></table></div></div>';
 
@@ -599,6 +698,8 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
       field('Rewards site link', '<input name="portalUrl" type="url" value="' + esc(s.portalUrl) + '">', '', 'Used in Slack posts, /wags rewards and App Home') +
       '<label class="check"><input type="checkbox" name="announce" ' + (s.announce ? 'checked' : '') + '> Post openings, 24h reminders and draws to ' + esc(s.channel) + '</label>' +
       '<label class="check"><input type="checkbox" name="dmWinners" ' + (s.dmWinners ? 'checked' : '') + '> DM winners</label>' +
+      field('Tickets for a picked idea', '<input name="ideaTickets" type="number" step="1" min="0" value="' + s.ideaTickets + '">', '', 'Paid once to whoever nominated it') +
+      '<label class="check"><input type="checkbox" name="ideasEnabled" ' + (s.ideasEnabled ? 'checked' : '') + '> Show the Ideas tab</label>' +
       '<div class="full muted" style="font-size:12px">Tickets count from ' + esc(fullDate(s.launch) || 'the beginning') + '. Scheduler: ' + esc(s.scheduler) + '.</div>' +
       '<div class="full"><button class="btn primary" type="submit">Save settings</button></div></form></div>';
 
@@ -654,6 +755,18 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     }).catch(function (e) { busy = false; toast(e.message, true); render(); });
   }
 
+  function ideaDo(promise, quiet) {
+    if (busy) return Promise.resolve(null);
+    busy = true; render();
+    return promise.then(function (res) {
+      busy = false;
+      if (res.state) S = res.state;
+      if (!res.ok || !quiet) toast(res.ok ? (res.message || 'Done.') : res.error, !res.ok);
+      render();
+      return res;
+    }).catch(function (e) { busy = false; toast(e.message, true); render(); });
+  }
+
   function podById(id) { return S.pods.filter(function (p) { return p.pod_id === id; })[0]; }
   function clampTarget(p, v) {
     var ceiling = p.mine + S.wallet.spendable;
@@ -668,6 +781,31 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     var d = el.dataset;
     if (d.tab) { tab = d.tab; render(); if (tab === 'admin' && !A) loadAdmin(); return; }
     if (d.kv) { kudosView = d.kv; render(); return; }
+    if (d.iv) { ideaView = d.iv; render(); return; }
+    if (d.vote) { ideaDo(call('portalToggleIdeaVote', d.vote), true); return; }
+    if (d.withdraw) {
+      if (!confirmInline(el, 'Withdraw it?')) return;
+      ideaDo(call('portalWithdrawIdea', d.withdraw)); return;
+    }
+    if (d.topod) {
+      var idea = (S.ideas || []).filter(function (x) { return x.idea_id === d.topod; })[0];
+      if (!idea) return;
+      editing = { title: idea.title, description: idea.details, from_idea: idea.idea_id, from_nominator: idea.nominator };
+      tab = 'admin';
+      render();
+      if (!A) loadAdmin();
+      var ed2 = document.getElementById('editor'); if (ed2) ed2.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    if (d.select) {
+      if (!confirmInline(el, 'Pick it and pay?')) return;
+      adminDo(call('portalAdminDecideIdea', d.select, 'selected', '')); return;
+    }
+    if (d.decline) {
+      if (!confirmInline(el, 'Decline it?')) return;
+      adminDo(call('portalAdminDecideIdea', d.decline, 'declined', '')); return;
+    }
+    if (d.reopen) { adminDo(call('portalAdminDecideIdea', d.reopen, 'open', '')); return; }
     if (d.step) {
       var p = podById(d.pod); if (!p) return;
       var cur = drafts[p.pod_id] !== undefined ? drafts[p.pod_id] : p.mine;
@@ -716,6 +854,7 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
 
   document.addEventListener('input', function (ev) {
     var el = ev.target;
+    if (el.form && el.form.id === 'ideaform' && (el.name === 'title' || el.name === 'details')) { ideaDraft[el.name] = el.value; return; }
     if (el.dataset && el.dataset.input) {
       var p = podById(el.dataset.input); if (!p) return;
       var v = clampTarget(p, el.value);
@@ -740,8 +879,13 @@ var BOOT = <?!= JSON.stringify(boot).replace(/</g, '\\u003c') ?>;
     if (f.id === 'podform') {
       data.opens_ts = fromLocalInput(data.opens_ts);
       data.closes_ts = fromLocalInput(data.closes_ts);
-      if (editing) data.pod_id = editing.pod_id;
+      if (editing && editing.pod_id) data.pod_id = editing.pod_id;
+      if (editing && editing.from_idea) data.from_idea = editing.from_idea;
       adminDo(call('portalAdminSavePod', data)).then(function (res) { if (res && res.ok) editing = null; render(); });
+    } else if (f.id === 'ideaform') {
+      ideaDo(call('portalSubmitIdea', data.title, data.details)).then(function (res) {
+        if (res && res.ok) { ideaDraft = { title: '', details: '' }; ideaView = 'open'; render(); }
+      });
     } else if (f.id === 'grantform') {
       var ids = Array.prototype.map.call(document.querySelectorAll('[data-person]:checked'), function (c) { return c.dataset.person; });
       if (!ids.length) { toast('Tick at least one person first.', true); return; }

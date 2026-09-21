@@ -17,7 +17,8 @@ var SHEETS = {
   EVENTS: 'Events',
   PODS: 'Pods',
   TICKETS: 'Tickets',
-  WINNERS: 'Winners'
+  WINNERS: 'Winners',
+  IDEAS: 'Ideas'
 };
 
 /** Column order for each tab. Changing these means re-running setupSpreadsheet(). */
@@ -42,7 +43,11 @@ var COLUMNS = {
     'created_by', 'created_ts', 'updated_ts', 'sort'],
   TICKETS: ['id', 'ts_iso', 'user_id', 'name', 'delta', 'kind', 'pod_id', 'ref', 'note', 'actor'],
   WINNERS: ['pod_id', 'pod_title', 'place', 'user_id', 'name', 'tickets_in', 'pod_total_tickets',
-    'entrants', 'drawn_ts', 'draw_roll', 'fulfilled', 'fulfilled_ts', 'fulfilled_by', 'notes']
+    'entrants', 'drawn_ts', 'draw_roll', 'fulfilled', 'fulfilled_ts', 'fulfilled_by', 'notes'],
+  // Reward ideas staff nominate. voters is a comma list of Slack ids; a selected
+  // idea pays its nominator IDEA_SELECTED_TICKETS once (Tickets ref idea:<id>).
+  IDEAS: ['idea_id', 'title', 'details', 'nominator_id', 'nominator_name', 'status', 'voters', 'created_ts',
+    'decided_ts', 'decided_by', 'decision_note', 'pod_id', 'paid_tickets']
 };
 
 /**
@@ -117,6 +122,9 @@ var CONFIG_DEFAULTS = {
   REWARDS_DM_WINNERS: { value: true, notes: 'TRUE sends each winner a direct message as well as the channel post.' },
   REWARDS_EXCLUDE_RECENT_WINNERS_DAYS: { value: 0, notes: 'Keep anyone who won a pod in the last N days out of new draws (their tickets are refunded). 0 = no exclusion.' },
   SLACK_APP_URL: { value: '', notes: 'The Slack project\'s web app /exec URL (no ?k=). The rewards portal pings it after changing a setting so Slack stops showing the cached old value.' },
+  IDEAS_ENABLED: { value: true, notes: 'TRUE shows the Ideas tab on the rewards site, where staff nominate rewards and upvote each other\'s.' },
+  IDEA_SELECTED_TICKETS: { value: 20, notes: 'Tickets paid to the nominator when an admin selects their reward idea. Paid once per idea.' },
+  IDEA_MAX_OPEN_PER_PERSON: { value: 5, notes: 'Most ideas one person can have waiting for a decision at once. 0 = no limit.' },
   REWARDS_JOB_SCRIPT_ID: { value: '', notes: 'Set by installRewardsTriggers(). Only the Apps Script project with this id runs scheduled draws, so two projects sharing the sheet can never draw the same pod twice.' },
 
   // ---- Scheduled posts ----------------------------------------------------

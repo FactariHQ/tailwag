@@ -72,6 +72,10 @@ function buildRewardsBlocks_(userId) {
   blocks.push(contextBlock_('Every ' + wagWord_(1) + ' you receive earns ' + ticketWord_(rate) +
     (give > 0 ? ', and every one you give earns ' + ticketWord_(give) : '') +
     '. Put them in whichever rewards you want — more tickets, better odds. Tickets in a draw are spent win or lose.'));
+  if (cfgBool_('IDEAS_ENABLED')) {
+    blocks.push(contextBlock_(':bulb: Got an idea for something worth winning? Nominate it on the rewards site — ' +
+      'if it gets picked you earn ' + ticketWord_(cfgNum_('IDEA_SELECTED_TICKETS')) + '.'));
+  }
 
   var url = cfgStr_('REWARDS_PORTAL_URL');
   if (url) blocks.push(actionsBlock_([linkButton_('Open Tail Wag Rewards', url, 'open_rewards', 'primary')]));

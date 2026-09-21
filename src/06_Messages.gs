@@ -337,6 +337,10 @@ function buildHelpCard_(userId) {
       (perG > 0 ? ', and every one you give earns *' + perG + '*' : '') + '.');
     lines.push('Put your tickets into whichever rewards you want on the rewards site — more tickets, better odds. ' +
       'Tickets in a draw are spent win or lose; you can pull them back out until it closes.');
+    if (cfgBool_('IDEAS_ENABLED')) {
+      lines.push(':bulb: Nominate a reward idea on the rewards site. If it gets picked, you earn *' +
+        ticketWord_(cfgNum_('IDEA_SELECTED_TICKETS')) + '*.');
+    }
     lines.push('`/wags rewards` — your tickets and what is open' +
       (cfgStr_('REWARDS_PORTAL_URL') ? '  ·  <' + cfgStr_('REWARDS_PORTAL_URL') + '|open the rewards site>' : ''));
     lines.push('Badges unlock automatically at ' + cfgList_('BADGE_THRESHOLDS').join(', ') + ' tailwags received.');
