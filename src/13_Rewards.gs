@@ -13,6 +13,7 @@
  *                one person:
  *                  earn_received / earn_given   +  credited from the tailwag Ledger
  *                  grant                        ±  an admin bonus or correction
+ *                  idea                         +  the nominator's reward idea was selected
  *                  enter                        −  tickets put into a pod
  *                  withdraw                     +  taken back out before close
  *                  refund                       +  pod cancelled, or entrant excluded
@@ -43,14 +44,14 @@
  */
 
 var POD_STATUSES = ['draft', 'live', 'drawn', 'cancelled'];
-var TICKET_KINDS = ['earn_received', 'earn_given', 'grant', 'enter', 'withdraw', 'refund'];
+var TICKET_KINDS = ['earn_received', 'earn_given', 'grant', 'idea', 'enter', 'withdraw', 'refund'];
 
 // Per-execution memo; the tabs are read once per request at most.
-var __rw = { tickets: null, pods: null, winners: null };
+var __rw = { tickets: null, pods: null, winners: null, ideas: null };
 
 /** Forgets the per-execution memo after a write. */
 function rewardsCacheDrop_() {
-  __rw = { tickets: null, pods: null, winners: null };
+  __rw = { tickets: null, pods: null, winners: null, ideas: null };
 }
 
 /** Epoch ms from whatever a cell hands back: Date, number, ISO string or blank. */
@@ -396,7 +397,7 @@ function allWallets_() {
     if (!wallets[id]) {
       wallets[id] = {
         user_id: id, name: name || id,
-        available: 0, earned: 0, granted: 0, pending: 0,
+        available: 0, earned: 0, granted: 0, ideas: 0, pending: 0,
         inPlay: 0, spent: 0, refunded: 0, byPod: {}
       };
     }
@@ -411,6 +412,7 @@ function allWallets_() {
     x.available = tix_(x.available + t.delta);
     if (t.kind === 'earn_received' || t.kind === 'earn_given') x.earned = tix_(x.earned + t.delta);
     if (t.kind === 'grant') x.granted = tix_(x.granted + t.delta);
+    if (t.kind === 'idea') x.ideas = tix_(x.ideas + t.delta);
     if (t.kind === 'refund') x.refunded = tix_(x.refunded + t.delta);
     if (t.pod_id && (t.kind === 'enter' || t.kind === 'withdraw' || t.kind === 'refund')) {
       x.byPod[t.pod_id] = tix_((x.byPod[t.pod_id] || 0) - t.delta);
@@ -443,7 +445,7 @@ function allWallets_() {
 function walletFor_(userId) {
   var all = allWallets_();
   return all[userId] || {
-    user_id: userId, name: userId, available: 0, spendable: 0, earned: 0, granted: 0,
+    user_id: userId, name: userId, available: 0, spendable: 0, earned: 0, granted: 0, ideas: 0,
     pending: 0, inPlay: 0, spent: 0, refunded: 0, byPod: {}
   };
 }
