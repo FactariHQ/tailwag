@@ -219,13 +219,10 @@ function portalState_(me) {
   var podsById = {};
   pods.forEach(function (p) { podsById[p.pod_id] = p; });
 
-  // Staff see live pods, plus anything settled in the last 45 days.
-  var recentCut = t - 45 * 86400000;
+  // Staff see live pods only. Drawn pods live on the Winners tab; drafts are
+  // admin-only; a cancelled pod shows up as a refund in history.
   var visible = pods.filter(function (p) {
-    if (p.hidden_ts) return false;   // an admin hid it
-    if (p.status === 'live') return true;
-    if (p.status === 'drawn') return tsMs_(p.drawn_ts) >= recentCut;
-    return false;   // drafts are admin-only; a cancelled pod shows up as a refund in history
+    return p.status === 'live' && !p.hidden_ts;
   }).map(function (p) { return podForPage_(p, totals[p.pod_id], me.userId, t); });
 
   var wallet = walletFor_(me.userId);
