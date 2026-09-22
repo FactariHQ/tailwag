@@ -358,7 +358,7 @@ The web leaderboard page uses the same secret, so the link is safe to pin in a c
 npm test          # node test/run.js && node test/ideas.js && node test/hide.js
 ```
 
-203 tests, no network and no Google account required. `test/harness.js` recreates enough of the Apps Script runtime — `SpreadsheetApp` with real 1-indexed range semantics, `Utilities.formatDate` with genuine timezone handling, `CacheService`, `PropertiesService`, `LockService`, `UrlFetchApp`, `ScriptApp` — to load the actual `.gs` files into a Node VM. The tests exercise the real code, not a reimplementation of it, and the fake spreadsheet is a real 2D array so off-by-one bugs in the store layer surface exactly as they would in production.
+206 tests, no network and no Google account required. `test/harness.js` recreates enough of the Apps Script runtime — `SpreadsheetApp` with real 1-indexed range semantics, `Utilities.formatDate` with genuine timezone handling, `CacheService`, `PropertiesService`, `LockService`, `UrlFetchApp`, `ScriptApp` — to load the actual `.gs` files into a Node VM. The tests exercise the real code, not a reimplementation of it, and the fake spreadsheet is a real 2D array so off-by-one bugs in the store layer surface exactly as they would in production.
 
 The fake sheet also lies the way Sheets lies: it coerces a string like `"2026-09"` into a Date, turns a leading `=` into a live formula, and strips the apostrophe that forces a cell to text. That matters — a version of this app that passed a naive test suite would have reported zero monthly tailwags and an empty raffle forever, because Sheets silently reinterprets the period keys.
 
@@ -421,5 +421,5 @@ slack/manifest.json    Paste into Slack to create the app
 test/harness.js        Apps Script runtime shim
 test/run.js            188 tests
 test/ideas.js          10 reward-ideas tests
-test/hide.js           5 hide-from-staff tests
+test/hide.js           8 hide-from-staff and mention-rendering tests
 ```
