@@ -196,6 +196,65 @@ test('hiding is portal-only and admin-only', () => {
   env.state.scriptId = 'THE_SLACK_PROJECT';
   eq(env.call('setPodHidden_', pod, 'a', true).ok, false);
 });
+
+// ===========================================================================
+suite('Reasons read as names, not user ids');
+// ===========================================================================
+
+test('a reaction reason turns <@U…> into the person\'s name, and nobody is pinged twice', () => {
+  const env = freshEnv();
+  env.state.fetchResponses['conversations.history'] = {
+    ok: true, messages: [{ text: 'stellar data collection with <@U08DANA1> today' }]
+  };
+  env.call('handleEvent_', {
+    type: 'event_callback', team_id: 'T_TEST',
+    event: {
+      type: 'reaction_added', user: 'U08JOSH1', reaction: 'jackson',
+      item_user: 'U08SAM01', item: { type: 'message', channel: 'C_GENERAL', ts: '1758001234.000100' }
+    }
+  });
+  const rows = env.sheetRows('Ledger');
+  eq(rows.length, 1);
+  const reason = String(rows[0].reason);
+  includes(reason, '@dana', 'the mentioned person is named: ' + reason);
+  assert(reason.indexOf('<@') === -1, 'no raw mention markup: ' + reason);
+  assert(reason.indexOf('U08DANA1') === -1, 'no user id in the reason');
+});
+
+test('humanizeMentions_ renders every kind of Slack markup', () => {
+  const env = freshEnv();
+  env.call('syncRosterFromSlack_');
+  const h = (s, rosterOnly) => env.call('humanizeMentions_', s, rosterOnly);
+  eq(h('hi <@U08SAM01>'), 'hi @sam');
+  eq(h('hi <@U08SAM01|sammy>'), 'hi @sammy');
+  eq(h('hi <@U08SAM01>', true), 'hi @sam', 'the roster answers without a Slack call');
+  eq(h('hi <@U0NOTHERE>', true), 'hi @someone');
+  eq(h('see <#C0A4P16SNNA|adm_operations>'), 'see #adm_operations');
+  eq(h('see <#C0A4P16SNNA>'), 'see #channel');
+  eq(h('<!here> look'), '@here look');
+  eq(h('<!subteam^S123|@bcbas> look'), '@bcbas look');
+  eq(h('read <https://actaba.com|the site>'), 'read the site');
+  eq(h('read <https://actaba.com>'), 'read https://actaba.com');
+  eq(h('no markup here'), 'no markup here');
+});
+
+test('a reason stored with raw ids still reads as a name on the site and in Slack', () => {
+  const env = asPortal(freshEnv({ ADMIN_USER_IDS: 'U08JOSH1' }));
+  env.call('syncRosterFromSlack_');
+  env.call('setupRewards');
+  env.call('appendLedger_', {
+    week_key: env.call('weekKey_'), month_key: env.call('monthKey_'),
+    giver_id: 'U08JOSH1', giver_name: 'josh', receiver_id: 'U08DANA1', receiver_name: 'dana',
+    dots: 1, reason: 'for: shout out to <@U08SAM01> for the data', source: 'reaction', pool: 'peer'
+  });
+  env.run('cacheDropAll_()');
+  env.setActiveUser('dana@actaba.com');
+  const st = env.call('portalLoad');
+  includes(st.received[0].reason, '@sam');
+  assert(st.received[0].reason.indexOf('<@') === -1);
+  includes(JSON.stringify(body(slashCommand(env, '/wags', 'feed')).blocks), '@sam');
+});
+
 console.log(`\n${'─'.repeat(60)}`);
 if (failed === 0) {
   console.log(`\x1b[32m\x1b[1m${passed} passed\x1b[0m, 0 failed`);
