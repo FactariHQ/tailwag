@@ -257,7 +257,7 @@ function buildOtherBalanceCard_(bal, userId) {
   var recent = recentReasons_(3, { receiver_id: userId });
   if (recent.length) {
     blocks.push(sectionBlock_('*Lately*\n' + recent.map(function (r) {
-      return '> ' + escapeSlack_(truncate_(r.reason, 160)) + '  _— ' + escapeSlack_(r.giver_name) + '_';
+      return '> ' + escapeSlack_(truncate_(humanizeMentions_(r.reason, true), 160)) + '  _— ' + escapeSlack_(r.giver_name) + '_';
     }).join('\n')));
   }
   return { text: displayName_(userId) + ': ' + num_(bal.received_total) + ' ' + wagWord_(num_(bal.received_total)) + ' all-time', blocks: blocks };
@@ -273,7 +273,7 @@ function buildFeedBlocks_(limit) {
     var v = values[r.value_tag];
     return contextBlock_(
       (v ? v.emoji + ' ' : '') + mention_(r.giver_id) + ' → ' + mention_(r.receiver_id) +
-      ' (' + r.dots + ')  ·  ' + escapeSlack_(truncate_(r.reason, 180))
+      ' (' + r.dots + ')  ·  ' + escapeSlack_(truncate_(humanizeMentions_(r.reason, true), 180))
     );
   }));
 }
