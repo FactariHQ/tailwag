@@ -136,7 +136,7 @@ function handleReactionEvent_(event) {
   // Slack hands message text back already escaped (&amp;, &lt;). Everything
   // downstream escapes again on the way out, so undo it once here or a message
   // containing "&" renders as "&amp;amp;".
-  reason = reason ? 'for: ' + truncate_(unescapeSlack_(reason).replace(/\s+/g, ' ').trim(), 300)
+  reason = reason ? 'for: ' + truncate_(humanizeMentions_(unescapeSlack_(reason)).replace(/\s+/g, ' ').trim(), 300)
     : 'for something worth reacting to';
 
   var req = {
