@@ -100,7 +100,7 @@ function buildHomeView_(userId) {
       var v = values[r.value_tag];
       blocks.push(contextBlock_(
         (v ? v.emoji + ' ' : '') + '*' + escapeSlack_(r.giver_name) + '* → *' +
-        escapeSlack_(r.receiver_name) + '*  ·  ' + escapeSlack_(truncate_(r.reason, 200))
+        escapeSlack_(r.receiver_name) + '*  ·  ' + escapeSlack_(truncate_(humanizeMentions_(r.reason, true), 200))
       ));
     });
   }

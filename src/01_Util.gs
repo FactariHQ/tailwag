@@ -300,6 +300,36 @@ function escapeSlack_(s) {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Turns Slack's link markup into something a human reads, so a quoted message
+ * never shows up as "<@U09TWPG0H7Z>". Mentions become plain "@Name" text rather
+ * than live mentions: the reason is quoted back in a channel, in a DM and on the
+ * rewards site, and nobody should be pinged three times for being named once.
+ *
+ * @param {string} text
+ * @param {boolean} rosterOnly true resolves ids from the Roster only (no Slack
+ *   call), for rendering text that was stored before this existed.
+ */
+function humanizeMentions_(text, rosterOnly) {
+  var s = String(text == null ? '' : text);
+  if (s.indexOf('<') === -1) return s;
+  return s
+    .replace(/<@([UW][A-Z0-9]{2,})\|([^>]+)>/g, function (full, id, label) { return '@' + label; })
+    .replace(/<@([UW][A-Z0-9]{2,})>/g, function (full, id) {
+      if (rosterOnly) {
+        var r = getRoster_()[id];
+        var n = r && String(r.display_name || r.real_name || '').trim();
+        return n ? '@' + n : '@someone';
+      }
+      var name = displayName_(id);
+      return '@' + (name === id ? 'someone' : name);
+    })
+    .replace(/<!subteam\^[A-Z0-9]+(?:\|@?([^>]+))?>/g, function (full, label) { return label ? '@' + label.replace(/^@/, '') : '@group'; })
+    .replace(/<!(channel|here|everyone)(?:\|[^>]*)?>/g, function (full, which) { return '@' + which; })
+    .replace(/<#[CG][A-Z0-9]+(?:\|([^>]*))?>/g, function (full, label) { return label ? '#' + label : '#channel'; })
+    .replace(/<((?:https?|mailto):[^>|]+)(?:\|([^>]*))?>/g, function (full, url, label) { return label || url.replace(/^mailto:/, ''); });
+}
+
 /** Reverses Slack's own escaping, for text read back out of the API. */
 function unescapeSlack_(s) {
   return String(s == null ? '' : s)
