@@ -197,7 +197,7 @@ function ledgerForPage_(r, values) {
   return {
     ts: tsIso_(r.ts_iso), giver_id: String(r.giver_id), giver: String(r.giver_name || r.giver_id),
     receiver_id: String(r.receiver_id), receiver: String(r.receiver_name || r.receiver_id),
-    dots: num_(r.dots), reason: String(r.reason || ''), source: String(r.source || ''),
+    dots: num_(r.dots), reason: humanizeMentions_(String(r.reason || ''), true), source: String(r.source || ''),
     value: v ? v.label : '', value_emoji: v ? v.emoji : ''
   };
 }
