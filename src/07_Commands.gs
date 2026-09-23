@@ -125,7 +125,9 @@ function dispatchSideMessages_(result, req, extraCalls) {
   if (cfgBool_('MIRROR_TO_ANNOUNCE_CHANNEL') && cfgBool_('ANNOUNCE_IN_SOURCE_CHANNEL')) {
     var mirror = buildAwardMessage_(result, req);
     var ch = resolveChannel_(cfgStr_('ANNOUNCE_CHANNEL'));
-    if (ch) {
+    // A tailwag given inside the announce channel is already announced there;
+    // a mirror copy would post the same message twice in the same channel.
+    if (ch && !isSameChannel_(ch, req.channelId, req.channelName)) {
       calls.push({
         method: 'chat.postMessage',
         payload: { channel: ch, text: mirror.text, blocks: mirror.blocks, unfurl_links: false }
@@ -154,6 +156,18 @@ function dispatchSideMessages_(result, req, extraCalls) {
   }
 
   if (calls.length) slackApiAll_(calls);
+}
+
+/**
+ * True when a resolved channel (an id, or "#name" when lookup fell back to the
+ * name) is the channel the tailwag was given in.
+ */
+function isSameChannel_(resolved, channelId, channelName) {
+  var r = String(resolved || '').trim();
+  if (!r) return false;
+  if (channelId && r === String(channelId)) return true;
+  var name = String(channelName || '').replace(/^#/, '').toLowerCase();
+  return !!name && r.charAt(0) === '#' && r.slice(1).toLowerCase() === name;
 }
 
 /**
